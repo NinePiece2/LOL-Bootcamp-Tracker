@@ -169,30 +169,44 @@ export default function Home() {
   // Generate Twitch embed URLs
   const getTwitchEmbedUrl = (twitchLogin: string) => {
     // Extract hostname and port from NEXT_PUBLIC_APP_URL or use current location
-    const getParentDomain = () => {
-      if (typeof window !== 'undefined') {
-        // Client-side: use current location with port if non-standard
-        const { hostname, port } = window.location;
-        return port && port !== '80' && port !== '443' ? `${hostname}:${port}` : hostname;
-      }
+    const getParentDomains = () => {
+      const domains = [];
       
-      // Server-side: extract from NEXT_PUBLIC_APP_URL
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-      if (appUrl) {
-        try {
-          const url = new URL(appUrl);
-          const isStandardPort = (url.protocol === 'https:' && url.port === '443') || 
-                                (url.protocol === 'http:' && url.port === '80') || 
-                                !url.port;
-          return isStandardPort ? url.hostname : `${url.hostname}:${url.port}`;
-        } catch {
-          return 'localhost';
+      if (typeof window !== 'undefined') {
+        // Client-side: use current location
+        const { hostname, port } = window.location;
+        domains.push(hostname);
+        if (port && port !== '80' && port !== '443') {
+          domains.push(`${hostname}:${port}`);
+        }
+      } else {
+        // Server-side: extract from NEXT_PUBLIC_APP_URL
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+        if (appUrl) {
+          try {
+            const url = new URL(appUrl);
+            domains.push(url.hostname);
+            const isStandardPort = (url.protocol === 'https:' && url.port === '443') || 
+                                  (url.protocol === 'http:' && url.port === '80') || 
+                                  !url.port;
+            if (!isStandardPort) {
+              domains.push(`${url.hostname}:${url.port}`);
+            }
+          } catch {
+            domains.push('localhost');
+          }
+        } else {
+          domains.push('localhost');
         }
       }
-      return 'localhost';
+      
+      return [...new Set(domains)]; // Remove duplicates
     };
 
-    return `https://player.twitch.tv/?channel=${twitchLogin}&parent=${getParentDomain()}&autoplay=false`;
+    const parentDomains = getParentDomains();
+    const parentParams = parentDomains.map(domain => `parent=${domain}`).join('&');
+    
+    return `https://player.twitch.tv/?channel=${twitchLogin}&${parentParams}&autoplay=false`;
   };
 
   if (isLoading) {
