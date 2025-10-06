@@ -11,54 +11,49 @@ data:
 # Database and Redis Deployment
 ---
 
-apiVersion: apps/v1
-kind: StatefulSet
+apiVersion: v1
+kind: Secret
 metadata:
-  name: patroni
+  name: app-secret-pg
+  namespace: lol-bootcamp-tracker
+type: kubernetes.io/basic-auth
+data:
+  username: YXBw
+  password: cGFzc3dvcmQ=
+
+---
+
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres
   namespace: lol-bootcamp-tracker
 spec:
-  serviceName: "patroni"
-  replicas: 3
-  selector:
-    matchLabels:
-      app: patroni
-  template:
-    metadata:
-      labels:
-        app: patroni
-    spec:
-      containers:
-      - name: patroni
-        image: zalando/patroni:latest
-        volumeMounts:
-        - name: data
-          mountPath: /home/postgres/pgdata
-      volumes:
-      - name: config
-        configMap:
-          name: patroni-config
-  volumeClaimTemplates:
-  - metadata:
-      name: data
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      storageClassName: hostpath
-      resources:
-        requests:
-          storage: 1Gi
-    
+  instances: 3
+  primaryUpdateStrategy: unsupervised
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+      secret:
+        name: app-secret-pg
+  storage:
+    size: 1Gi
+    storageClass: microk8s-hostpath
+
 ---
 
 apiVersion: v1
 kind: Service
 metadata:
-  name: patroni-leader
+  name: postgres
   namespace: lol-bootcamp-tracker
 spec:
-  selector:
-    role: master
   ports:
-  - port: 5432
+    - port: 5432
+      targetPort: 5432
+  selector:
+    postgresql.k8s.enterprisedb.io/cluster: postgres
 
 ---
 
@@ -97,16 +92,43 @@ spec:
       - name: redis
         image: redis:8.2
         command:
-          - "redis-server"
-          - "/etc/redis/redis.conf"
+          - sh
+          - -c
+          - |
+            if [ "$HOSTNAME" = "redis-0" ]; then
+              echo "Starting as Redis master"
+              redis-server /etc/redis/redis.conf
+            else
+              echo "Starting as Redis replica of redis-0"
+              redis-server /etc/redis/redis.conf --replicaof redis-0.redis.lol-bootcamp-tracker.svc.cluster.local 6379
+            fi
         ports:
         - containerPort: 6379
           name: redis
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
         volumeMounts:
         - name: data
           mountPath: /data
         - name: config
           mountPath: /etc/redis
+        livenessProbe:
+          tcpSocket:
+            port: 6379
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
       volumes:
       - name: config
         configMap:
@@ -116,19 +138,20 @@ spec:
       name: data
     spec:
       accessModes: ["ReadWriteOnce"]
-      storageClassName: hostpath
+      storageClassName: microk8s-hostpath
       resources:
         requests:
-          storage: 5Gi
+          storage: 500Mi
 
 ---
 
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: redis-sentinel
   namespace: lol-bootcamp-tracker
 spec:
+  serviceName: "redis-sentinel"
   replicas: 3
   selector:
     matchLabels:
@@ -140,16 +163,48 @@ spec:
     spec:
       containers:
       - name: sentinel
-        image: redis:7.2
+        image: redis:8.2
         command:
-          - "redis-sentinel"
-          - "/etc/redis/sentinel.conf"
+          - sh
+          - -c
+          - |
+            # Wait for Redis master to be ready
+            until redis-cli -h redis-0.redis.lol-bootcamp-tracker.svc.cluster.local -p 6379 ping; do
+              echo "Waiting for Redis master..."
+              sleep 2
+            done
+            echo "Redis master is ready, starting Sentinel..."
+            # Copy config to writable location
+            cp /etc/redis/sentinel.conf /tmp/sentinel.conf
+            redis-sentinel /tmp/sentinel.conf
         ports:
         - containerPort: 26379
           name: sentinel
+        resources:
+          requests:
+            cpu: "25m"
+            memory: "64Mi"
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
         volumeMounts:
         - name: config
           mountPath: /etc/redis
+        livenessProbe:
+          tcpSocket:
+            port: 26379
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - -p
+            - "26379"
+            - sentinel
+            - masters
+          initialDelaySeconds: 10
+          periodSeconds: 5
       volumes:
       - name: config
         configMap:
@@ -163,13 +218,65 @@ metadata:
   name: redis-sentinel
   namespace: lol-bootcamp-tracker
 spec:
+  clusterIP: None
   ports:
     - port: 26379
       name: sentinel
   selector:
     app: redis-sentinel
 
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-sentinel-service
+  namespace: lol-bootcamp-tracker
+spec:
+  ports:
+    - port: 26379
+      name: sentinel
+      targetPort: 26379
+  selector:
+    app: redis-sentinel
+
 # App Deployment
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lol-bootcamp-tracker-sa
+  namespace: lol-bootcamp-tracker
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: lol-bootcamp-tracker
+  name: pod-reader
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-reader-binding
+  namespace: lol-bootcamp-tracker
+subjects:
+- kind: ServiceAccount
+  name: lol-bootcamp-tracker-sa
+  namespace: lol-bootcamp-tracker
+roleRef:
+  kind: Role
+  name: pod-reader
+  apiGroup: rbac.authorization.k8s.io
+
 ---
 
 apiVersion: apps/v1
@@ -213,11 +320,32 @@ spec:
           env:
             - name: NODE_ENV
               value: "production"
-            - name: Database
-              value: "postgresql://postgres:postgres@patroni-leader:5432/postgres"
-            - name: REDIS_URL
-              value: "redis://redis-sentinel:26379"
-
+            - name: AUTH_TRUST_HOST
+              value: "true"
+            - name: AUTH_SECRET
+              value: ""
+            - name: NEXTAUTH_SECRET
+              value: "="
+            - name: NEXTAUTH_URL
+              value: "https://lol-bootcamp-tracker.romitsagu.com"
+            - name: DATABASE_URL
+              value: "postgres://app:password@postgres-rw:5432/app"
+            - name: REDIS_SENTINEL_MASTER
+              value: "mymaster"
+            - name: REDIS_SENTINEL_HOSTS
+              value: "redis-sentinel-0.redis-sentinel.lol-bootcamp-tracker.svc.cluster.local:26379,redis-sentinel-1.redis-sentinel.lol-bootcamp-tracker.svc.cluster.local:26379,redis-sentinel-2.redis-sentinel.lol-bootcamp-tracker.svc.cluster.local:26379"
+            - name: RIOT_API_KEY
+              value: ""
+            - name: TWITCH_CLIENT_ID
+              value: ""
+            - name: TWITCH_CLIENT_SECRET
+              value: ""
+            - name: TWITCH_EVENTSUB_SECRET
+              value: ""
+            - name: TWITCH_CALLBACK_URL
+              value: "https://lol-bootcamp-tracker.romitsagu.com/api/webhooks/twitch"
+            - name: NEXT_PUBLIC_APP_URL
+              value: "https://lol-bootcamp-tracker.romitsagu.com"
 
 
         - name: lol-bootcamp-tracker-nginx
@@ -242,6 +370,115 @@ spec:
 
 ---
 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: lol-bootcamp-tracker-worker
+  name: lol-bootcamp-tracker-worker
+  namespace: lol-bootcamp-tracker
+spec:
+  revisionHistoryLimit: 3
+  replicas: 1
+  selector:
+    matchLabels:
+      run: lol-bootcamp-tracker-worker
+  template:
+    metadata:
+      labels:
+        run: lol-bootcamp-tracker-worker
+    spec:
+      serviceAccountName: lol-bootcamp-tracker-sa
+      initContainers:
+      # Wait for PostgreSQL cluster to be ready
+      - name: wait-for-postgres
+        image: postgres:15-alpine
+        command:
+          - sh
+          - -c
+          - |
+            echo "Waiting for PostgreSQL cluster to be ready..."
+            # Wait for PostgreSQL service to accept connections
+            until pg_isready -h postgres-rw -p 5432 -U app; do
+              echo "PostgreSQL service not ready, waiting..."
+              sleep 3
+            done
+            # Additional check: try to connect and verify cluster status
+            until psql -h postgres-rw -U app -d app -c "SELECT version();" >/dev/null 2>&1; do
+              echo "PostgreSQL not fully ready for queries, waiting..."
+              sleep 3
+            done
+            echo "PostgreSQL cluster is ready and accepting connections!"
+        env:
+          - name: PGPASSWORD
+            value: "password"
+      # Database migration only runs once (check if schema exists)
+      - name: db-migration-check
+        image: ninepiece2/lol-bootcamp-tracker:migrate
+        imagePullPolicy: Always
+        command:
+          - sh
+          - -c
+          - |
+            # Only run migration if tables don't exist yet
+            if ! psql "$DATABASE_URL" -c "SELECT 1 FROM information_schema.tables WHERE table_name = 'User' LIMIT 1;" >/dev/null 2>&1; then
+              echo "Running database migration..."
+              ./migrate.sh
+            else
+              echo "Database schema already exists, skipping migration."
+            fi
+        env:
+          - name: DATABASE_URL
+            value: "postgres://app:password@postgres-rw:5432/app"
+          - name: DB_HOST
+            value: "postgres-rw"
+          - name: DB_PORT
+            value: "5432"
+          - name: NODE_ENV
+            value: "production"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+      containers:
+        - name: lol-bootcamp-tracker-worker
+          image: ninepiece2/lol-bootcamp-tracker:latest
+          imagePullPolicy: Always
+          command: ["tsx", "workers.ts"]
+          resources:
+            requests:
+              cpu: "300m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: DATABASE_URL
+              value: "postgres://app:password@postgres-rw:5432/app"
+            - name: REDIS_SENTINEL_MASTER
+              value: "mymaster"
+            - name: REDIS_SENTINEL_HOSTS
+              value: "redis-sentinel-0.redis-sentinel.lol-bootcamp-tracker.svc.cluster.local:26379,redis-sentinel-1.redis-sentinel.lol-bootcamp-tracker.svc.cluster.local:26379,redis-sentinel-2.redis-sentinel.lol-bootcamp-tracker.svc.cluster.local:26379"
+            - name: RIOT_API_KEY
+              value: ""
+            - name: TWITCH_CLIENT_ID
+              value: ""
+            - name: TWITCH_CLIENT_SECRET
+              value: ""
+            - name: TWITCH_EVENTSUB_SECRET
+              value: ""
+            - name: TWITCH_CALLBACK_URL
+              value: "https://lol-bootcamp-tracker.romitsagu.com/api/webhooks/twitch"
+            - name: NEXTAUTH_SECRET
+              value: ""
+
+---
+
 apiVersion: v1
 kind: Service
 metadata:
@@ -255,7 +492,7 @@ spec:
       protocol: TCP
       port: 443
       targetPort: 443
-      nodePort: 30006
+      nodePort: 30007
   type: LoadBalancer
 
 ---
