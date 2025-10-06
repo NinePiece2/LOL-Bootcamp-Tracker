@@ -20,8 +20,11 @@ export function createRedisConnection(): Redis {
     return new Redis({
       sentinels: sentinelHosts,
       name: process.env.REDIS_SENTINEL_MASTER || 'mymaster',
-      maxRetriesPerRequest: null,
-      enableOfflineQueue: false,
+      maxRetriesPerRequest: 3,
+      connectTimeout: 10000,
+      lazyConnect: true,
+      // Important: Allow offline queue for BullMQ compatibility
+      enableOfflineQueue: true,
     });
   } else {
     // Development: Direct Redis connection
@@ -29,7 +32,9 @@ export function createRedisConnection(): Redis {
     console.log('🔄 Connecting to Redis directly:', redisUrl);
     
     return new Redis(redisUrl, {
-      maxRetriesPerRequest: null,
+      maxRetriesPerRequest: 3,
+      connectTimeout: 10000,
+      lazyConnect: true,
     });
   }
 }
@@ -38,3 +43,24 @@ export function createRedisConnection(): Redis {
  * Shared Redis connection instance for BullMQ and other Redis operations
  */
 export const redisConnection = createRedisConnection();
+
+// Add connection event handlers for better debugging
+redisConnection.on('connect', () => {
+  console.log('✅ Redis connected successfully');
+});
+
+redisConnection.on('ready', () => {
+  console.log('✅ Redis ready for operations');
+});
+
+redisConnection.on('error', (err) => {
+  console.error('❌ Redis connection error:', err.message);
+});
+
+redisConnection.on('close', () => {
+  console.log('⚠️ Redis connection closed');
+});
+
+redisConnection.on('reconnecting', () => {
+  console.log('🔄 Redis reconnecting...');
+});

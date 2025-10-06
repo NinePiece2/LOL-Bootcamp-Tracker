@@ -14,9 +14,9 @@ data:
     # Master-replica configuration
     replica-announce-ip redis-0.redis.lol-bootcamp-tracker.svc.cluster.local
     replica-announce-port 6379
-    # Memory management
+    # Memory management - IMPORTANT: Use noeviction for BullMQ
     maxmemory 256mb
-    maxmemory-policy allkeys-lru
+    maxmemory-policy noeviction
     # Logging
     loglevel notice
     logfile ""
