@@ -81,17 +81,27 @@ jobs:
 
       - name: Update Kubernetes Deployment
         run: |
-          kubectl set image deployment/lol-bootcamp-tracker-ui lol-bootcamp-tracker-ui=${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker-ui:latest lol-bootcamp-tracker-nginx:latest -n lol-bootcamp-tracker
-          kubectl set image deployment/lol-bootcamp-tracker-worker lol-bootcamp-tracker-worker=${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker-api:latest -n lol-bootcamp-tracker
+          # Update UI deployment (both containers use the same image)
+          kubectl set image deployment/lol-bootcamp-tracker-ui \
+            lol-bootcamp-tracker-ui=${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker:latest \
+            lol-bootcamp-tracker-nginx=nginx:latest \
+            -n lol-bootcamp-tracker
+          
+          # Update worker deployment
+          kubectl set image deployment/lol-bootcamp-tracker-worker \
+            lol-bootcamp-tracker-worker=${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker:latest \
+            -n lol-bootcamp-tracker
 
+          # Add deployment annotations
           kubectl annotate deployment lol-bootcamp-tracker-ui \
-            kubernetes.io/change-cause="Deployed commit ${{ github.sha }} from branch ${{ github.ref_name }} via GitHub Actions run https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}. Updated images: UI=${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker-ui:latest" \
+            kubernetes.io/change-cause="Deployed commit ${{ github.sha }} from branch ${{ github.ref_name }} via GitHub Actions run https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}. Updated images: APP=${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker:latest" \
             --overwrite -n lol-bootcamp-tracker
 
           kubectl annotate deployment lol-bootcamp-tracker-worker \
-            kubernetes.io/change-cause="Deployed commit ${{ github.sha }} from branch ${{ github.ref_name }} via GitHub Actions run https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}. Updated images: UI=${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker-ui:latest" \
+            kubernetes.io/change-cause="Deployed commit ${{ github.sha }} from branch ${{ github.ref_name }} via GitHub Actions run https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}. Updated images: APP=${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker:latest" \
             --overwrite -n lol-bootcamp-tracker
 
+          # Restart deployments to pick up new images
           kubectl rollout restart deployment/lol-bootcamp-tracker-ui -n lol-bootcamp-tracker
           kubectl rollout restart deployment/lol-bootcamp-tracker-worker -n lol-bootcamp-tracker
 
@@ -107,7 +117,7 @@ jobs:
         run: |
           echo "⏳ Waiting for rollout to finish..."
           kubectl rollout status deployment/lol-bootcamp-tracker-ui -n lol-bootcamp-tracker --timeout=10m
-        #   kubectl rollout status deployment/lol-bootcamp-tracker-worker -n lol-bootcamp-tracker --timeout=10m
+          kubectl rollout status deployment/lol-bootcamp-tracker-worker -n lol-bootcamp-tracker --timeout=10m
 
       - name: Mark Deployment as Successful
         if: success()
