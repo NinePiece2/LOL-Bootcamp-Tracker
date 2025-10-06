@@ -10,3 +10,17 @@ data:
     port 6379
     dir /data
     appendonly yes
+    appendfsync everysec
+    # Master-replica configuration
+    replica-announce-ip redis-0.redis.lol-bootcamp-tracker.svc.cluster.local
+    replica-announce-port 6379
+    # Memory management
+    maxmemory 256mb
+    maxmemory-policy allkeys-lru
+    # Logging
+    loglevel notice
+    logfile ""
+    # Persistence
+    save 900 1
+    save 300 10
+    save 60 10000

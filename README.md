@@ -79,6 +79,8 @@ npx prisma db push
 
 ### 4. Start Redis
 
+**For Development:**
+
 Make sure Redis is running:
 
 ```bash
@@ -87,6 +89,27 @@ docker run -d -p 6379:6379 redis:alpine
 
 # Or using brew (macOS)
 brew services start redis
+```
+
+**For Production:**
+
+The application supports Redis Sentinel for high availability. When deployed with Kubernetes, the system automatically uses Redis Sentinel configuration.
+
+**Redis Configuration Options:**
+
+The app automatically detects the Redis configuration based on environment variables:
+
+- **Development mode**: Uses direct Redis connection via `REDIS_URL`
+- **Production mode**: Uses Redis Sentinel when `REDIS_SENTINEL_HOSTS` is set
+
+Environment variables:
+```bash
+# Development: Direct connection
+REDIS_URL="redis://localhost:6379"
+
+# Production: Sentinel configuration (overrides REDIS_URL)
+REDIS_SENTINEL_MASTER="mymaster"
+REDIS_SENTINEL_HOSTS="sentinel1:26379,sentinel2:26379,sentinel3:26379"
 ```
 
 ### 5. Run the Application

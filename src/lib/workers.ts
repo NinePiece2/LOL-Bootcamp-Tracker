@@ -1,16 +1,12 @@
 import { Queue, Worker, Job } from 'bullmq';
-import { Redis } from 'ioredis';
 import { prisma } from '@/lib/db';
 import { getRiotClient } from '@/lib/riot-api';
 import { getTwitchClient } from '@/lib/twitch-api';
 import { RiotRegion, REGION_TO_PLATFORM } from '@/lib/types';
-
-const connection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-  maxRetriesPerRequest: null,
-});
+import { redisConnection } from '@/lib/redis';
 
 // Queue for spectator checks
-export const spectatorQueue = new Queue('spectator-checks', { connection });
+export const spectatorQueue = new Queue('spectator-checks', { connection: redisConnection });
 
 interface SpectatorJobData {
   bootcamperId: string;
@@ -221,7 +217,7 @@ export const spectatorWorker = new Worker<SpectatorJobData>(
     await checkSpectator(job.data);
   },
   {
-    connection,
+    connection: redisConnection,
     concurrency: 5,
   }
 );
@@ -238,7 +234,7 @@ spectatorWorker.on('failed', (job, err) => {
 });
 
 // Queue for match data fetching
-export const matchDataQueue = new Queue('match-data', { connection });
+export const matchDataQueue = new Queue('match-data', { connection: redisConnection });
 
 interface MatchDataJobData {
   bootcamperId: string;
@@ -295,7 +291,7 @@ export const matchDataWorker = new Worker<MatchDataJobData>(
     await fetchMatchData(job.data);
   },
   {
-    connection,
+    connection: redisConnection,
     concurrency: 2,
   }
 );
@@ -309,7 +305,7 @@ matchDataWorker.on('failed', (job, err) => {
 });
 
 // Queue for summoner name updates
-export const summonerNameQueue = new Queue('summoner-name-updates', { connection });
+export const summonerNameQueue = new Queue('summoner-name-updates', { connection: redisConnection });
 
 interface SummonerNameJobData {
   bootcamperId: string;
@@ -377,7 +373,7 @@ export const summonerNameWorker = new Worker<SummonerNameJobData>(
     await updateSummonerName(job.data);
   },
   {
-    connection,
+    connection: redisConnection,
     concurrency: 2,
   }
 );
@@ -391,7 +387,7 @@ summonerNameWorker.on('failed', (job, err) => {
 });
 
 // Queue for Twitch stream checks
-export const twitchStreamQueue = new Queue('twitch-stream-checks', { connection });
+export const twitchStreamQueue = new Queue('twitch-stream-checks', { connection: redisConnection });
 
 interface TwitchStreamJobData {
   bootcamperId: string;
@@ -490,7 +486,7 @@ export const twitchStreamWorker = new Worker<TwitchStreamJobData>(
     await checkTwitchStream(job.data);
   },
   {
-    connection,
+    connection: redisConnection,
     concurrency: 3,
   }
 );
@@ -656,7 +652,7 @@ export async function shutdownWorkers() {
   await matchDataQueue.close();
   await twitchStreamQueue.close();
   await summonerNameQueue.close();
-  await connection.quit();
+  await redisConnection.quit();
   
   console.log('Worker system shut down');
 }

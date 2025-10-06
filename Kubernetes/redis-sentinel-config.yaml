@@ -7,7 +7,15 @@ data:
   sentinel.conf: |
     port 26379
     dir /tmp
+    # Monitor the Redis master (StatefulSet pod 0)
     sentinel monitor mymaster redis-0.redis.lol-bootcamp-tracker.svc.cluster.local 6379 2
     sentinel down-after-milliseconds mymaster 5000
-    sentinel failover-timeout mymaster 10000
+    sentinel failover-timeout mymaster 60000
     sentinel parallel-syncs mymaster 1
+    # Quorum of 2 means we need at least 2 Sentinels to agree
+    # Network timeouts
+    sentinel resolve-hostnames yes
+    sentinel announce-hostnames yes
+    # Logging
+    loglevel notice
+    logfile ""
