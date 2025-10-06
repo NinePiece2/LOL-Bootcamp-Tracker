@@ -3,15 +3,42 @@ import { prisma } from '@/lib/db';
 import { getRiotClient } from '@/lib/riot-api';
 import { getTwitchClient } from '@/lib/twitch-api';
 import { RiotRegion, REGION_TO_PLATFORM } from '@/lib/types';
-import { redisConnection } from '@/lib/redis';
+import { createRedisConnection } from '@/lib/redis';
+import Redis from 'ioredis';
 
-// Queue for spectator checks
-export const spectatorQueue = new Queue('spectator-checks', { connection: redisConnection });
+// Global connection and queue variables - initialized in initializeWorkers()
+let redisConnection: Redis | null = null;
+let spectatorQueue: Queue;
+let matchDataQueue: Queue;
+let twitchStreamQueue: Queue;
+let summonerNameQueue: Queue;
+let spectatorWorker: Worker;
+let matchDataWorker: Worker;
+let twitchStreamWorker: Worker;
+let summonerNameWorker: Worker;
 
 interface SpectatorJobData {
   bootcamperId: string;
   puuid: string;
   region: RiotRegion;
+}
+
+interface MatchDataJobData {
+  bootcamperId: string;
+  gameId: string;
+  region: RiotRegion;
+}
+
+interface SummonerNameJobData {
+  bootcamperId: string;
+  puuid: string;
+  region: RiotRegion;
+}
+
+interface TwitchStreamJobData {
+  bootcamperId: string;
+  twitchUserId: string;
+  twitchLogin: string;
 }
 
 /**
@@ -209,40 +236,6 @@ async function checkSpectator(data: SpectatorJobData) {
 }
 
 /**
- * Worker to process spectator checks
- */
-export const spectatorWorker = new Worker<SpectatorJobData>(
-  'spectator-checks',
-  async (job: Job<SpectatorJobData>) => {
-    await checkSpectator(job.data);
-  },
-  {
-    connection: redisConnection,
-    concurrency: 5,
-  }
-);
-
-spectatorWorker.on('completed', () => {
-  // Silent success to avoid spam
-});
-
-spectatorWorker.on('failed', (job, err) => {
-  // Only log non-404 failures
-  if (!(err.message && err.message.includes('404'))) {
-    console.error(`❌ Spectator check failed for bootcamper ${job?.data.bootcamperId}:`, err);
-  }
-});
-
-// Queue for match data fetching
-export const matchDataQueue = new Queue('match-data', { connection: redisConnection });
-
-interface MatchDataJobData {
-  bootcamperId: string;
-  gameId: string;
-  region: RiotRegion;
-}
-
-/**
  * Fetch match data from Riot API
  */
 async function fetchMatchData(data: MatchDataJobData) {
@@ -280,37 +273,6 @@ async function fetchMatchData(data: MatchDataJobData) {
     console.error(`Error fetching match data for game ${gameId}:`, error);
     throw error;
   }
-}
-
-/**
- * Worker to process match data fetches
- */
-export const matchDataWorker = new Worker<MatchDataJobData>(
-  'match-data',
-  async (job: Job<MatchDataJobData>) => {
-    await fetchMatchData(job.data);
-  },
-  {
-    connection: redisConnection,
-    concurrency: 2,
-  }
-);
-
-matchDataWorker.on('completed', (job) => {
-  console.log(`Match data fetch completed for game ${job.data.gameId}`);
-});
-
-matchDataWorker.on('failed', (job, err) => {
-  console.error(`Match data fetch failed for game ${job?.data.gameId}:`, err);
-});
-
-// Queue for summoner name updates
-export const summonerNameQueue = new Queue('summoner-name-updates', { connection: redisConnection });
-
-interface SummonerNameJobData {
-  bootcamperId: string;
-  puuid: string;
-  region: RiotRegion;
 }
 
 /**
@@ -362,37 +324,6 @@ async function updateSummonerName(data: SummonerNameJobData) {
     console.error(`Error updating summoner name for ${bootcamper.summonerName}:`, error);
     // Don't throw - we don't want to fail the job for this
   }
-}
-
-/**
- * Worker to process summoner name updates
- */
-export const summonerNameWorker = new Worker<SummonerNameJobData>(
-  'summoner-name-updates',
-  async (job: Job<SummonerNameJobData>) => {
-    await updateSummonerName(job.data);
-  },
-  {
-    connection: redisConnection,
-    concurrency: 2,
-  }
-);
-
-summonerNameWorker.on('completed', () => {
-  // Silent success to avoid spam
-});
-
-summonerNameWorker.on('failed', (job, err) => {
-  console.error(`Summoner name update failed for bootcamper ${job?.data.bootcamperId}:`, err);
-});
-
-// Queue for Twitch stream checks
-export const twitchStreamQueue = new Queue('twitch-stream-checks', { connection: redisConnection });
-
-interface TwitchStreamJobData {
-  bootcamperId: string;
-  twitchUserId: string;
-  twitchLogin: string;
 }
 
 /**
@@ -478,31 +409,13 @@ async function checkTwitchStream(data: TwitchStreamJobData) {
 }
 
 /**
- * Worker to process Twitch stream checks
- */
-export const twitchStreamWorker = new Worker<TwitchStreamJobData>(
-  'twitch-stream-checks',
-  async (job: Job<TwitchStreamJobData>) => {
-    await checkTwitchStream(job.data);
-  },
-  {
-    connection: redisConnection,
-    concurrency: 3,
-  }
-);
-
-twitchStreamWorker.on('completed', () => {
-  // Silent success to avoid spam
-});
-
-twitchStreamWorker.on('failed', (job, err) => {
-  console.error(`Twitch stream check failed for bootcamper ${job?.data.bootcamperId}:`, err);
-});
-
-/**
  * Schedule spectator checks for all active bootcampers
  */
 export async function scheduleSpectatorChecks() {
+  if (!spectatorQueue) {
+    throw new Error('Workers not initialized. Call initializeWorkers() first.');
+  }
+
   const bootcampers = await prisma.bootcamper.findMany({
     where: {
       // Only check bootcampers currently in bootcamp
@@ -538,6 +451,10 @@ export async function scheduleSpectatorChecks() {
  * Schedule Twitch stream checks for bootcampers with Twitch accounts
  */
 export async function scheduleTwitchStreamChecks() {
+  if (!twitchStreamQueue) {
+    throw new Error('Workers not initialized. Call initializeWorkers() first.');
+  }
+
   const bootcampers = await prisma.bootcamper.findMany({
     where: {
       // Only check bootcampers with Twitch accounts
@@ -578,6 +495,10 @@ export async function scheduleTwitchStreamChecks() {
  * Schedule summoner name checks for all bootcampers
  */
 export async function scheduleSummonerNameChecks() {
+  if (!summonerNameQueue) {
+    throw new Error('Workers not initialized. Call initializeWorkers() first.');
+  }
+
   const bootcampers = await prisma.bootcamper.findMany({
     where: {
       // Check all bootcampers with PUUID
@@ -602,7 +523,7 @@ export async function scheduleSummonerNameChecks() {
       },
       {
         repeat: {
-          every: 3600000, // Check every hour (3600000ms)
+          every: 3600000, // Check every hour
         },
         jobId: `summoner-name-${bootcamper.id}`, // Unique job ID to avoid duplicates
       }
@@ -615,6 +536,104 @@ export async function scheduleSummonerNameChecks() {
  */
 export async function initializeWorkers() {
   console.log('Initializing worker system...');
+  
+  // Create Redis connection
+  console.log('Creating Redis connection...');
+  redisConnection = createRedisConnection();
+  
+  // Wait for connection to be ready
+  console.log('Waiting for Redis connection to be ready...');
+  await redisConnection.ping();
+  console.log('Redis connection established successfully');
+  
+  // Create queues
+  console.log('Creating queues...');
+  spectatorQueue = new Queue('spectator-checks', { connection: redisConnection });
+  matchDataQueue = new Queue('match-data', { connection: redisConnection });
+  twitchStreamQueue = new Queue('twitch-stream-checks', { connection: redisConnection });
+  summonerNameQueue = new Queue('summoner-name-updates', { connection: redisConnection });
+  
+  // Create workers
+  console.log('Creating workers...');
+  spectatorWorker = new Worker<SpectatorJobData>(
+    'spectator-checks',
+    async (job: Job<SpectatorJobData>) => {
+      await checkSpectator(job.data);
+    },
+    {
+      connection: redisConnection,
+      concurrency: 5,
+    }
+  );
+
+  matchDataWorker = new Worker<MatchDataJobData>(
+    'match-data',
+    async (job: Job<MatchDataJobData>) => {
+      await fetchMatchData(job.data);
+    },
+    {
+      connection: redisConnection,
+      concurrency: 2,
+    }
+  );
+
+  summonerNameWorker = new Worker<SummonerNameJobData>(
+    'summoner-name-updates',
+    async (job: Job<SummonerNameJobData>) => {
+      await updateSummonerName(job.data);
+    },
+    {
+      connection: redisConnection,
+      concurrency: 2,
+    }
+  );
+
+  twitchStreamWorker = new Worker<TwitchStreamJobData>(
+    'twitch-stream-checks',
+    async (job: Job<TwitchStreamJobData>) => {
+      await checkTwitchStream(job.data);
+    },
+    {
+      connection: redisConnection,
+      concurrency: 3,
+    }
+  );
+  
+  // Set up event handlers
+  spectatorWorker.on('completed', () => {
+    // Silent success to avoid spam
+  });
+
+  spectatorWorker.on('failed', (job, err) => {
+    // Only log non-404 failures
+    if (!(err.message && err.message.includes('404'))) {
+      console.error(`❌ Spectator check failed for bootcamper ${job?.data.bootcamperId}:`, err);
+    }
+  });
+
+  matchDataWorker.on('completed', (job) => {
+    console.log(`Match data fetch completed for game ${job.data.gameId}`);
+  });
+
+  matchDataWorker.on('failed', (job, err) => {
+    console.error(`Match data fetch failed for game ${job?.data.gameId}:`, err);
+  });
+
+  summonerNameWorker.on('completed', () => {
+    // Silent success to avoid spam
+  });
+
+  summonerNameWorker.on('failed', (job, err) => {
+    console.error(`Summoner name update failed for bootcamper ${job?.data.bootcamperId}:`, err);
+  });
+
+  twitchStreamWorker.on('completed', () => {
+    // Silent success to avoid spam
+  });
+
+  twitchStreamWorker.on('failed', (job, err) => {
+    console.error(`Twitch stream check failed for bootcamper ${job?.data.bootcamperId}:`, err);
+  });
   
   // Clear old jobs and reschedule with updated data
   console.log('Clearing old spectator jobs...');
@@ -635,7 +654,7 @@ export async function initializeWorkers() {
   // Schedule summoner name checks (runs every hour)
   await scheduleSummonerNameChecks();
   
-  console.log('Worker system initialized');
+  console.log('Worker system initialized successfully');
 }
 
 /**
@@ -644,15 +663,34 @@ export async function initializeWorkers() {
 export async function shutdownWorkers() {
   console.log('Shutting down worker system...');
   
-  await spectatorWorker.close();
-  await matchDataWorker.close();
-  await twitchStreamWorker.close();
-  await summonerNameWorker.close();
-  await spectatorQueue.close();
-  await matchDataQueue.close();
-  await twitchStreamQueue.close();
-  await summonerNameQueue.close();
-  await redisConnection.quit();
+  if (spectatorWorker) await spectatorWorker.close();
+  if (matchDataWorker) await matchDataWorker.close();
+  if (twitchStreamWorker) await twitchStreamWorker.close();
+  if (summonerNameWorker) await summonerNameWorker.close();
+  if (spectatorQueue) await spectatorQueue.close();
+  if (matchDataQueue) await matchDataQueue.close();
+  if (twitchStreamQueue) await twitchStreamQueue.close();
+  if (summonerNameQueue) await summonerNameQueue.close();
+  if (redisConnection) await redisConnection.quit();
   
   console.log('Worker system shut down');
+}
+
+// Export queues for external use (after initialization)
+export function getQueues() {
+  return {
+    spectatorQueue,
+    matchDataQueue,
+    twitchStreamQueue,
+    summonerNameQueue,
+  };
+}
+
+export function getWorkers() {
+  return {
+    spectatorWorker,
+    matchDataWorker,
+    twitchStreamWorker,
+    summonerNameWorker,
+  };
 }

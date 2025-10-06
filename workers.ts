@@ -7,7 +7,7 @@
  * - Match data fetching (post-game stats)
  */
 
-import { initializeWorkers, shutdownWorkers } from './src/lib/workers.js';
+import { initializeWorkers, shutdownWorkers } from './src/lib/workers';
 
 console.log('🚀 Starting League Bootcamp Tracker Workers...');
 

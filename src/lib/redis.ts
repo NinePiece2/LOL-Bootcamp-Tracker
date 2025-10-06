@@ -21,10 +21,12 @@ export function createRedisConnection(): Redis {
       sentinels: sentinelHosts,
       name: process.env.REDIS_SENTINEL_MASTER || 'mymaster',
       maxRetriesPerRequest: null,
-      connectTimeout: 10000,
-      lazyConnect: true,
-      // Important: Allow offline queue for BullMQ compatibility
+      connectTimeout: 30000,
+      lazyConnect: false,
       enableOfflineQueue: true,
+      // Keep connection alive
+      keepAlive: 30000,
+      family: 4, // Use IPv4
     });
   } else {
     // Development: Direct Redis connection
@@ -34,7 +36,8 @@ export function createRedisConnection(): Redis {
     return new Redis(redisUrl, {
       maxRetriesPerRequest: null,
       connectTimeout: 10000,
-      lazyConnect: true,
+      lazyConnect: false,
+      keepAlive: 30000,
     });
   }
 }
@@ -55,12 +58,32 @@ redisConnection.on('ready', () => {
 
 redisConnection.on('error', (err) => {
   console.error('❌ Redis connection error:', err.message);
+  // Don't exit process on Redis errors, let it retry
 });
 
 redisConnection.on('close', () => {
   console.log('⚠️ Redis connection closed');
 });
 
-redisConnection.on('reconnecting', () => {
-  console.log('🔄 Redis reconnecting...');
+redisConnection.on('reconnecting', (ms: number) => {
+  console.log(`🔄 Redis reconnecting in ${ms}ms...`);
 });
+
+redisConnection.on('end', () => {
+  console.log('� Redis connection ended');
+});
+
+// For Sentinel mode, add Sentinel-specific event handlers
+if (process.env.REDIS_SENTINEL_HOSTS) {
+  redisConnection.on('+sentinel', (sentinel) => {
+    console.log('📡 Sentinel connected:', sentinel);
+  });
+  
+  redisConnection.on('-sentinel', (sentinel) => {
+    console.log('📡 Sentinel disconnected:', sentinel);
+  });
+  
+  redisConnection.on('+switch-master', (masterName, oldHost, oldPort, newHost, newPort) => {
+    console.log(`🔄 Redis master switched: ${masterName} from ${oldHost}:${oldPort} to ${newHost}:${newPort}`);
+  });
+}
