@@ -1,0 +1,126 @@
+name: Kubernetes Deploy CD
+
+on:
+  repository_dispatch:
+    types: [build-completed]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-environment
+  cancel-in-progress: false  # Prevents new deployments from canceling an ongoing one
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    env:
+      KUBECONFIG: /root/.kube/config
+    steps:
+      - name: Check for Running Deployments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUNNING_WORKFLOWS=$(gh run list --repo ${{ github.repository }} --workflow deploy.yml --status in_progress --json databaseId --jq 'length')
+          if [ "$RUNNING_WORKFLOWS" -gt 0 ]; then
+            echo "🚨 Another deployment is already running. Exiting."
+            exit 0
+          fi
+        shell: bash
+
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Wait for all builds to complete
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const checkRuns = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.ref,
+            });
+
+            const builds = checkRuns.data.check_runs.filter(check => check.name.includes("build"));
+            
+            console.log("Waiting for all builds:", builds.map(b => b.name));
+
+            let allCompleted = false;
+            while (!allCompleted) {
+              await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10s before retrying
+
+              const updatedChecks = await github.rest.checks.listForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: context.ref,
+              });
+
+              const updatedBuilds = updatedChecks.data.check_runs.filter(check => check.name.includes("build"));
+              allCompleted = updatedBuilds.every(b => b.status === "completed");
+
+              console.log("Current statuses:", updatedBuilds.map(b => `${b.name}: ${b.status}`));
+            }
+
+            console.log("All builds completed!");
+
+      - name: Create Deployment
+        id: deployment
+        uses: chrnorm/deployment-action@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          environment: production
+          description: "Deploy commit ${{ github.sha }} to Kubernetes"
+          transient-environment: false
+          production-environment: true
+      
+      - name: Mark Deployment as In Progress
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          state: in_progress
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Update Kubernetes Deployment
+        run: |
+          kubectl set image deployment/lol-bootcamp-tracker-ui lol-bootcamp-tracker-ui=${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker-ui:latest lol-bootcamp-tracker-nginx:latest -n lol-bootcamp-tracker
+          kubectl set image deployment/lol-bootcamp-tracker-worker lol-bootcamp-tracker-worker=${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker-api:latest -n lol-bootcamp-tracker
+
+          kubectl annotate deployment lol-bootcamp-tracker-ui \
+            kubernetes.io/change-cause="Deployed commit ${{ github.sha }} from branch ${{ github.ref_name }} via GitHub Actions run https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}. Updated images: UI=${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker-ui:latest" \
+            --overwrite -n lol-bootcamp-tracker
+
+          kubectl annotate deployment lol-bootcamp-tracker-worker \
+            kubernetes.io/change-cause="Deployed commit ${{ github.sha }} from branch ${{ github.ref_name }} via GitHub Actions run https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}. Updated images: UI=${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker-ui:latest" \
+            --overwrite -n lol-bootcamp-tracker
+
+          kubectl rollout restart deployment/lol-bootcamp-tracker-ui -n lol-bootcamp-tracker
+          kubectl rollout restart deployment/lol-bootcamp-tracker-worker -n lol-bootcamp-tracker
+
+      - name: Mark Deployment as Rolling Out
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          state: in_progress
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+          description: "Rolling out to Kubernetes..."
+
+      - name: Wait for Rollout to Finish
+        run: |
+          echo "⏳ Waiting for rollout to finish..."
+          kubectl rollout status deployment/lol-bootcamp-tracker-ui -n lol-bootcamp-tracker --timeout=10m
+        #   kubectl rollout status deployment/lol-bootcamp-tracker-worker -n lol-bootcamp-tracker --timeout=10m
+
+      - name: Mark Deployment as Successful
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          state: success
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Mark Deployment as Failed
+        if: failure()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          state: failure
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}

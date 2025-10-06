@@ -20,7 +20,7 @@ export function createRedisConnection(): Redis {
     return new Redis({
       sentinels: sentinelHosts,
       name: process.env.REDIS_SENTINEL_MASTER || 'mymaster',
-      maxRetriesPerRequest: 3,
+      maxRetriesPerRequest: null,
       connectTimeout: 10000,
       lazyConnect: true,
       // Important: Allow offline queue for BullMQ compatibility
@@ -32,7 +32,7 @@ export function createRedisConnection(): Redis {
     console.log('🔄 Connecting to Redis directly:', redisUrl);
     
     return new Redis(redisUrl, {
-      maxRetriesPerRequest: 3,
+      maxRetriesPerRequest: null,
       connectTimeout: 10000,
       lazyConnect: true,
     });
