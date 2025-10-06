@@ -9,6 +9,11 @@ RUN npm ci --only=production
 # Copy Prisma schema and migration files
 COPY prisma ./prisma
 COPY tsconfig.json ./tsconfig.json
+COPY scripts ./scripts
+COPY src ./src
+
+# Install tsx for running TypeScript files
+RUN npm install -g tsx
 
 # Generate Prisma client
 RUN npx prisma generate
@@ -25,6 +30,9 @@ RUN echo '#!/bin/sh' > migrate.sh && \
     echo 'echo "Database is ready! Applying schema..."' >> migrate.sh && \
     echo 'npx prisma db push --accept-data-loss' >> migrate.sh && \
     echo 'echo "Migration completed successfully!"' >> migrate.sh && \
+    echo 'echo "Checking for admin user setup..."' >> migrate.sh && \
+    echo 'tsx scripts/create-default-admin.ts || echo "Admin check completed"' >> migrate.sh && \
+    echo 'echo "Setup completed!"' >> migrate.sh && \
     chmod +x migrate.sh
 
 # Install netcat for connection testing
