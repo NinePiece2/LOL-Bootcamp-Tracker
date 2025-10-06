@@ -168,7 +168,31 @@ export default function Home() {
 
   // Generate Twitch embed URLs
   const getTwitchEmbedUrl = (twitchLogin: string) => {
-    return `https://player.twitch.tv/?channel=${twitchLogin}&parent=${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}&autoplay=false`;
+    // Extract hostname and port from NEXT_PUBLIC_APP_URL or use current location
+    const getParentDomain = () => {
+      if (typeof window !== 'undefined') {
+        // Client-side: use current location with port if non-standard
+        const { hostname, port } = window.location;
+        return port && port !== '80' && port !== '443' ? `${hostname}:${port}` : hostname;
+      }
+      
+      // Server-side: extract from NEXT_PUBLIC_APP_URL
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+      if (appUrl) {
+        try {
+          const url = new URL(appUrl);
+          const isStandardPort = (url.protocol === 'https:' && url.port === '443') || 
+                                (url.protocol === 'http:' && url.port === '80') || 
+                                !url.port;
+          return isStandardPort ? url.hostname : `${url.hostname}:${url.port}`;
+        } catch {
+          return 'localhost';
+        }
+      }
+      return 'localhost';
+    };
+
+    return `https://player.twitch.tv/?channel=${twitchLogin}&parent=${getParentDomain()}&autoplay=false`;
   };
 
   if (isLoading) {
