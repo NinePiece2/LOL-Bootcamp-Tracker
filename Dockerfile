@@ -14,6 +14,10 @@ RUN export SYNCFUSION_LICENSE=""
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY . .
+
+# Generate Prisma client before build
+RUN npx prisma generate
+
 RUN npm run build
 RUN npm prune --omit=dev 
 
@@ -26,6 +30,7 @@ COPY --from=build /app/package-lock.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
+COPY --from=build /app/prisma ./prisma
 
 EXPOSE 3000
 CMD ["npm", "start"]

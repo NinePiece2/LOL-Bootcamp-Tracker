@@ -1,7 +1,6 @@
 import { Queue, Worker, Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import { prisma } from '@/lib/db';
-import { Prisma } from '@prisma/client';
 import { getRiotClient } from '@/lib/riot-api';
 import { getTwitchClient } from '@/lib/twitch-api';
 import { RiotRegion, REGION_TO_PLATFORM } from '@/lib/types';
@@ -146,11 +145,13 @@ async function checkSpectator(data: SpectatorJobData) {
             bootcamperId,
             startedAt: new Date(activeGame.gameStartTime),
             status: 'live',
-            matchData: enrichedMatchData as unknown as Prisma.InputJsonValue, // Store enriched lobby info
+            // @ts-expect-error - Prisma JSON type differences between local and Docker
+            matchData: enrichedMatchData, // Store enriched lobby info
           },
           update: {
             status: 'live',
-            matchData: enrichedMatchData as unknown as Prisma.InputJsonValue, // Update enriched lobby info
+            // @ts-expect-error - Prisma JSON type differences between local and Docker
+            matchData: enrichedMatchData, // Update enriched lobby info
           },
         }),
       ]);
@@ -273,7 +274,8 @@ async function fetchMatchData(data: MatchDataJobData) {
         bootcamperId,
       },
       data: {
-        matchData: matchData as unknown as Prisma.InputJsonValue,
+        // @ts-expect-error - Prisma JSON type differences between local and Docker
+        matchData: matchData,
       },
     });
 
