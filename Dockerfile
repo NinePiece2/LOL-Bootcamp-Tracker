@@ -33,6 +33,7 @@ COPY --from=build /app/public ./public
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/workers.ts ./workers.ts
 COPY --from=build /app/src ./src
+COPY --from=build /app/tsconfig.json ./tsconfig.json
 
 # Install tsx for running TypeScript files
 RUN npm install -g tsx
