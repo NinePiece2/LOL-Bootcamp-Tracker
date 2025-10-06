@@ -543,6 +543,8 @@ export async function initializeWorkers() {
       return { host: hostname, port: parseInt(port) };
     }),
     name: process.env.REDIS_SENTINEL_MASTER || 'mymaster',
+    // CRITICAL: Explicitly specify master role for writes
+    role: 'master',
     maxRetriesPerRequest: null,
     enableOfflineQueue: true,
     family: 4,
@@ -557,6 +559,11 @@ export async function initializeWorkers() {
     keepAlive: 30000,
     autoResubscribe: true,
     autoResendUnfulfilledCommands: true,
+    // Sentinel-specific settings to ensure master connection
+    sentinelRetryDelayOnSentinelDown: 200,
+    sentinelRetryDelayOnFailover: 200,
+    preferredSlaves: [], // Empty to prefer master
+    enableAutoPipelining: false, // Disable to avoid connection issues
   } : {
     // Direct Redis configuration
     host: new URL(process.env.REDIS_URL || 'redis://localhost:6379').hostname,
