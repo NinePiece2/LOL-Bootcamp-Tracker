@@ -168,31 +168,42 @@ export default function Home() {
 
   // Generate Twitch embed URLs
   const getTwitchEmbedUrl = (twitchLogin: string) => {
-    // For IP-based deployments, use the chat embed which is less restrictive
-    // This is a workaround until a proper domain is configured
-    if (typeof window !== 'undefined') {
-      const { hostname } = window.location;
-      
-      // If using IP address, fallback to a simpler embed approach
-      if (hostname.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
-        // Use the basic embed without parent restrictions for IP addresses
-        return `https://player.twitch.tv/?channel=${twitchLogin}&autoplay=false&muted=false`;
-      }
-    }
-    
-    // For proper domains, use the standard parent approach
+    // Now that we have a proper domain, use it consistently
     const getParentDomains = () => {
-      const safeDomains = ['localhost', '127.0.0.1'];
+      const domains = [];
       
       if (typeof window !== 'undefined') {
+        // Client-side: use current location
         const { hostname, port } = window.location;
-        safeDomains.push(hostname);
+        domains.push(hostname);
         if (port && port !== '80' && port !== '443') {
-          safeDomains.push(`${hostname}:${port}`);
+          domains.push(`${hostname}:${port}`);
+        }
+      } else {
+        // Server-side: extract from NEXT_PUBLIC_APP_URL
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+        if (appUrl) {
+          try {
+            const url = new URL(appUrl);
+            domains.push(url.hostname);
+            // For standard HTTPS (443), don't include port
+            const isStandardPort = (url.protocol === 'https:' && (url.port === '443' || !url.port)) || 
+                                  (url.protocol === 'http:' && (url.port === '80' || !url.port));
+            if (!isStandardPort) {
+              domains.push(`${url.hostname}:${url.port}`);
+            }
+          } catch {
+            domains.push('lol-bootcamp-tracker.romitsagu.com');
+          }
+        } else {
+          domains.push('lol-bootcamp-tracker.romitsagu.com');
         }
       }
       
-      return [...new Set(safeDomains)];
+      // Add localhost for development
+      domains.push('localhost', '127.0.0.1');
+      
+      return [...new Set(domains)]; // Remove duplicates
     };
 
     const parentDomains = getParentDomains();
