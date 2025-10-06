@@ -38,6 +38,14 @@ export function createRedisConnection(): Redis {
       connectTimeout: 10000,
       lazyConnect: false,
       keepAlive: 30000,
+      // Network tuning
+      family: 4, // Use IPv4
+      // Keep connection alive settings
+      enableOfflineQueue: true,
+      autoResubscribe: true,
+      autoResendUnfulfilledCommands: true,
+      // TCP settings for better connection stability
+      commandTimeout: 5000,
     });
   }
 }
