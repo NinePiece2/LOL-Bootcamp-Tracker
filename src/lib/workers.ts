@@ -546,6 +546,17 @@ export async function initializeWorkers() {
     maxRetriesPerRequest: null,
     enableOfflineQueue: true,
     family: 4,
+    // Additional resilience settings for Kubernetes
+    connectTimeout: 60000,
+    lazyConnect: true,
+    maxLoadingTimeout: 0,
+    retryDelayOnSentinelDown: 200,
+    retryDelayOnFailover: 200,
+    enableReadyCheck: false,
+    // Keep connections alive
+    keepAlive: 30000,
+    autoResubscribe: true,
+    autoResendUnfulfilledCommands: true,
   } : {
     // Direct Redis configuration
     host: new URL(process.env.REDIS_URL || 'redis://localhost:6379').hostname,
@@ -553,6 +564,11 @@ export async function initializeWorkers() {
     maxRetriesPerRequest: null,
     enableOfflineQueue: true,
     family: 4,
+    connectTimeout: 10000,
+    lazyConnect: true,
+    keepAlive: 30000,
+    autoResubscribe: true,
+    autoResendUnfulfilledCommands: true,
   };
   
   // Create queues with individual connections
@@ -608,15 +624,21 @@ export async function initializeWorkers() {
     }
   );
   
-  // Set up event handlers
+  // Set up event handlers with connection error handling
   spectatorWorker.on('completed', () => {
     // Silent success to avoid spam
   });
 
   spectatorWorker.on('failed', (job, err) => {
-    // Only log non-404 failures
-    if (!(err.message && err.message.includes('404'))) {
-      console.error(`❌ Spectator check failed for bootcamper ${job?.data.bootcamperId}:`, err);
+    // Only log non-404 failures and non-connection errors
+    if (!(err.message && (err.message.includes('404') || err.message.includes('Connection is closed')))) {
+      console.error(`❌ Spectator check failed for bootcamper ${job?.data.bootcamperId}:`, err.message);
+    }
+  });
+
+  spectatorWorker.on('error', (err) => {
+    if (!err.message.includes('Connection is closed')) {
+      console.error('❌ Spectator worker error:', err.message);
     }
   });
 
@@ -625,7 +647,15 @@ export async function initializeWorkers() {
   });
 
   matchDataWorker.on('failed', (job, err) => {
-    console.error(`Match data fetch failed for game ${job?.data.gameId}:`, err);
+    if (!err.message.includes('Connection is closed')) {
+      console.error(`Match data fetch failed for game ${job?.data.gameId}:`, err.message);
+    }
+  });
+
+  matchDataWorker.on('error', (err) => {
+    if (!err.message.includes('Connection is closed')) {
+      console.error('❌ Match data worker error:', err.message);
+    }
   });
 
   summonerNameWorker.on('completed', () => {
@@ -633,7 +663,15 @@ export async function initializeWorkers() {
   });
 
   summonerNameWorker.on('failed', (job, err) => {
-    console.error(`Summoner name update failed for bootcamper ${job?.data.bootcamperId}:`, err);
+    if (!err.message.includes('Connection is closed')) {
+      console.error(`Summoner name update failed for bootcamper ${job?.data.bootcamperId}:`, err.message);
+    }
+  });
+
+  summonerNameWorker.on('error', (err) => {
+    if (!err.message.includes('Connection is closed')) {
+      console.error('❌ Summoner name worker error:', err.message);
+    }
   });
 
   twitchStreamWorker.on('completed', () => {
@@ -641,7 +679,15 @@ export async function initializeWorkers() {
   });
 
   twitchStreamWorker.on('failed', (job, err) => {
-    console.error(`Twitch stream check failed for bootcamper ${job?.data.bootcamperId}:`, err);
+    if (!err.message.includes('Connection is closed')) {
+      console.error(`Twitch stream check failed for bootcamper ${job?.data.bootcamperId}:`, err.message);
+    }
+  });
+
+  twitchStreamWorker.on('error', (err) => {
+    if (!err.message.includes('Connection is closed')) {
+      console.error('❌ Twitch stream worker error:', err.message);
+    }
   });
   
   // Clear old jobs and reschedule with updated data
