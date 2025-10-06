@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: patroni-config
+  namespace: lol-bootcamp-tracker
+data:
+  patroni.yml: |
+    bootstrap:
+      dcs:
+        postgresql:
+          parameters:
+            max_connections: 100
+          use_pg_rewind: true
+        loop_wait: 10
+        ttl: 30
+        retry_timeout: 10
+      initdb:
+      - encoding: UTF8
+      - data-checksums
+    postgresql:
+      authentication:
+        superuser:
+          username: postgres
+          password: postgres
+      use_unix_socket: true
+    kubernetes:
+      labels:
+        app: patroni

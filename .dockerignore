@@ -1,0 +1,6 @@
+*.md
+Kubernetes
+Dockerfile
+.dockerignore
+.git
+.gitignore
