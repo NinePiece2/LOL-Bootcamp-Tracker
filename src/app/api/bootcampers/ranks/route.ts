@@ -3,7 +3,6 @@ import { prisma } from '@/lib/db';
 import { getRiotClient } from '@/lib/riot-api';
 import { RiotRegion } from '@/lib/types';
 import { auth } from '@/lib/auth';
-import type { Prisma } from '@prisma/client';
 // Use a lightweight local type for bootcamper with games to avoid Prisma helper type issues
 type BootcamperWithGames = {
   id: string;
@@ -39,7 +38,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const listType = searchParams.get('listType');
 
-    const where: Prisma.BootcamperWhereInput = {
+    const where: Record<string, unknown> = {
       startDate: { lte: new Date() },
       OR: [
         { plannedEndDate: { gte: new Date() } },
