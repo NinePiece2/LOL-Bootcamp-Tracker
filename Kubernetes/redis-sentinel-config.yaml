@@ -19,6 +19,8 @@ data:
     sentinel announce-hostnames yes
     # Connection settings to improve stability
     sentinel deny-scripts-reconfig yes
+    # Ensure proper master-replica identification
+    sentinel auth-pass mymaster ""
     # Logging
     loglevel notice
     logfile ""

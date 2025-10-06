@@ -12,11 +12,14 @@ data:
     appendonly yes
     appendfsync everysec
     # Master-replica configuration
-    replica-announce-ip redis-0.redis.lol-bootcamp-tracker.svc.cluster.local
+    # Let each pod announce its own IP automatically
     replica-announce-port 6379
     # Memory management - IMPORTANT: Use noeviction for BullMQ
     maxmemory 256mb
     maxmemory-policy noeviction
+    # Replication settings for better Sentinel compatibility
+    repl-ping-replica-period 10
+    repl-timeout 60
     # Logging
     loglevel notice
     logfile ""
