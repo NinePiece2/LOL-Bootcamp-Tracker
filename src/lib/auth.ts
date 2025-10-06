@@ -25,6 +25,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   pages: {
     signIn: '/', // We'll handle sign-in via dialog on home page
   },
+  trustHost: true, // Required for NextAuth v5 when using custom domains
+  debug: process.env.NODE_ENV === 'development', // Enable debug logs in dev
   providers: [
     Credentials({
       name: 'credentials',
@@ -33,44 +35,49 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        const parsedCredentials = z
-          .object({ 
-            identifier: z.string().min(1), 
-            password: z.string().min(6) 
-          })
-          .safeParse(credentials);
+        try {
+          const parsedCredentials = z
+            .object({ 
+              identifier: z.string().min(1), 
+              password: z.string().min(6) 
+            })
+            .safeParse(credentials);
 
-        if (!parsedCredentials.success) return null;
+          if (!parsedCredentials.success) return null;
 
-        const { identifier, password } = parsedCredentials.data;
+          const { identifier, password } = parsedCredentials.data;
 
-        // Try to find user by email or username (case-insensitive for username)
-        const user = await prisma.user.findFirst({
-          where: {
-            OR: [
-              { email: identifier },
-              { 
-                username: {
-                  equals: identifier,
-                  mode: 'insensitive'
-                }
-              },
-            ],
-          },
-        });
+          // Try to find user by email or username (case-insensitive for username)
+          const user = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { email: identifier },
+                { 
+                  username: {
+                    equals: identifier,
+                    mode: 'insensitive'
+                  }
+                },
+              ],
+            },
+          });
 
-        if (!user) return null;
+          if (!user) return null;
 
-        const passwordsMatch = await compare(password, user.password);
+          const passwordsMatch = await compare(password, user.password);
 
-        if (!passwordsMatch) return null;
+          if (!passwordsMatch) return null;
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          isAdmin: user.isAdmin,
-        };
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            isAdmin: user.isAdmin,
+          };
+        } catch (error) {
+          console.error('NextAuth authorize error:', error);
+          return null;
+        }
       },
     }),
   ],
