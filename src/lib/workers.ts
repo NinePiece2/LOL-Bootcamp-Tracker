@@ -717,6 +717,65 @@ export async function initializeWorkers() {
   await scheduleSummonerNameChecks();
   
   console.log('Worker system initialized successfully');
+  
+  // Start periodic status logging
+  startStatusLogger();
+}
+
+/**
+ * Periodic status logger to show worker activity
+ */
+function startStatusLogger() {
+  setInterval(async () => {
+    try {
+      console.log('📊 Worker Status Check...');
+      
+      // Check queue stats
+      if (spectatorQueue) {
+        const waiting = await spectatorQueue.getWaiting();
+        const active = await spectatorQueue.getActive();
+        const delayed = await spectatorQueue.getDelayed();
+        console.log(`   Spectator Queue: ${waiting.length} waiting, ${active.length} active, ${delayed.length} delayed`);
+      }
+      
+      if (matchDataQueue) {
+        const waiting = await matchDataQueue.getWaiting();
+        const active = await matchDataQueue.getActive();
+        console.log(`   Match Data Queue: ${waiting.length} waiting, ${active.length} active`);
+      }
+      
+      if (twitchStreamQueue) {
+        const waiting = await twitchStreamQueue.getWaiting();
+        const active = await twitchStreamQueue.getActive();
+        const delayed = await twitchStreamQueue.getDelayed();
+        console.log(`   Twitch Queue: ${waiting.length} waiting, ${active.length} active, ${delayed.length} delayed`);
+      }
+      
+      if (summonerNameQueue) {
+        const waiting = await summonerNameQueue.getWaiting();
+        const active = await summonerNameQueue.getActive();
+        const delayed = await summonerNameQueue.getDelayed();
+        console.log(`   Summoner Name Queue: ${waiting.length} waiting, ${active.length} active, ${delayed.length} delayed`);
+      }
+      
+      // Check bootcamper count
+      const bootcamperCount = await prisma.bootcamper.count({
+        where: {
+          startDate: { lte: new Date() },
+          OR: [
+            { plannedEndDate: { gte: new Date() } },
+            { actualEndDate: { gte: new Date() } },
+          ],
+        },
+      });
+      
+      console.log(`   📈 Active bootcampers: ${bootcamperCount}`);
+      console.log('   ✅ Workers are alive and running');
+      
+    } catch (error) {
+      console.error('❌ Status check error:', error);
+    }
+  }, 60000); // Every 60 seconds
 }
 
 /**
