@@ -168,39 +168,31 @@ export default function Home() {
 
   // Generate Twitch embed URLs
   const getTwitchEmbedUrl = (twitchLogin: string) => {
-    // Extract hostname and port from NEXT_PUBLIC_APP_URL or use current location
+    // For IP-based deployments, use the chat embed which is less restrictive
+    // This is a workaround until a proper domain is configured
+    if (typeof window !== 'undefined') {
+      const { hostname } = window.location;
+      
+      // If using IP address, fallback to a simpler embed approach
+      if (hostname.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
+        // Use the basic embed without parent restrictions for IP addresses
+        return `https://player.twitch.tv/?channel=${twitchLogin}&autoplay=false&muted=false`;
+      }
+    }
+    
+    // For proper domains, use the standard parent approach
     const getParentDomains = () => {
-      const domains = [];
+      const safeDomains = ['localhost', '127.0.0.1'];
       
       if (typeof window !== 'undefined') {
-        // Client-side: use current location
         const { hostname, port } = window.location;
-        domains.push(hostname);
+        safeDomains.push(hostname);
         if (port && port !== '80' && port !== '443') {
-          domains.push(`${hostname}:${port}`);
-        }
-      } else {
-        // Server-side: extract from NEXT_PUBLIC_APP_URL
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-        if (appUrl) {
-          try {
-            const url = new URL(appUrl);
-            domains.push(url.hostname);
-            const isStandardPort = (url.protocol === 'https:' && url.port === '443') || 
-                                  (url.protocol === 'http:' && url.port === '80') || 
-                                  !url.port;
-            if (!isStandardPort) {
-              domains.push(`${url.hostname}:${url.port}`);
-            }
-          } catch {
-            domains.push('localhost');
-          }
-        } else {
-          domains.push('localhost');
+          safeDomains.push(`${hostname}:${port}`);
         }
       }
       
-      return [...new Set(domains)]; // Remove duplicates
+      return [...new Set(safeDomains)];
     };
 
     const parentDomains = getParentDomains();
@@ -349,6 +341,7 @@ export default function Home() {
                         frameBorder="0"
                         allowFullScreen
                         className="w-full h-full"
+                        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
                       />
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-200">
                         <div className="flex items-center justify-between">
