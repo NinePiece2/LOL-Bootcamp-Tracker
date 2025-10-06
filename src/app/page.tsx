@@ -2,12 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { format } from 'date-fns';
+import { Modal } from '@/components/ui/modal';
 import LiveGamesSection from './LiveGamesSection';
 import { ListSwitcher } from '@/components/list-switcher';
+import { Eye, EyeOff, GripVertical, X } from 'lucide-react';
 
 interface Bootcamper {
   id: string;
@@ -63,8 +62,11 @@ export default function Home() {
   const [bootcampers, setBootcampers] = useState<Bootcamper[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedStreamMode, setSelectedStreamMode] = useState<'all' | 'teammates'>('all');
-  const [expandedLobby, setExpandedLobby] = useState<{ [id: string]: boolean }>({});
-  const [selectedStreamers, setSelectedStreamers] = useState<string[]>([]); // Array of bootcamper IDs
+  const [showLobbyModal, setShowLobbyModal] = useState(false);
+  const [selectedLobbyId, setSelectedLobbyId] = useState<string | null>(null);
+  const [selectedStreamers, setSelectedStreamers] = useState<string[]>([]); // Array of bootcamper IDs for ordering
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [explicitSelection, setExplicitSelection] = useState(false);
   
   // Set initial list based on user permissions
   // Regular users start with 'user', admins start with 'default'
@@ -102,6 +104,48 @@ export default function Home() {
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [fetchData]); // Re-fetch when fetchData changes
+
+  // Load saved layout for authenticated users
+  useEffect(() => {
+    if (!session?.user) return;
+
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/user/layout');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!mounted || !data) return;
+        if (data.selectedStreamers && Array.isArray(data.selectedStreamers)) {
+          setSelectedStreamers(data.selectedStreamers.slice(0, 4));
+          setExplicitSelection(true);
+        }
+      } catch (err) {
+        console.error('Failed to load user layout', err);
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, [session?.user]);
+
+  // Persist layout for authenticated users when selection changes (debounced)
+  useEffect(() => {
+    if (!session?.user) return;
+    const payload = { selectedStreamers, explicitSelection };
+    const id = setTimeout(async () => {
+      try {
+        await fetch('/api/user/layout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch (err) {
+        console.error('Failed to save user layout', err);
+      }
+    }, 500);
+
+    return () => clearTimeout(id);
+  }, [session?.user, selectedStreamers, explicitSelection]);
 
   const liveStreamers = bootcampers.filter(
     (b) => b.twitchStreams && b.twitchStreams.length > 0 && b.twitchStreams[0].live
@@ -153,9 +197,18 @@ export default function Home() {
     .filter((s): s is Bootcamper => s !== undefined)
     .slice(0, 4);
 
-  const streamsToShow = selectedStreams.length > 0 ? selectedStreams : displayStreamers.slice(0, 4);
+  // If the user has explicitly interacted with selection controls, we honor selectedStreamers
+  // (which can be empty, resulting in a blank canvas). Otherwise we fall back to showing
+  // the default displayStreamers (up to 4).
+  let streamsToShow: Bootcamper[];
+  if (explicitSelection) {
+    streamsToShow = selectedStreams; // may be empty (blank canvas)
+  } else {
+    streamsToShow = selectedStreams.length > 0 ? selectedStreams : displayStreamers.slice(0, 4);
+  }
 
   const toggleStreamerSelection = (id: string) => {
+    setExplicitSelection(true);
     setSelectedStreamers(prev => {
       if (prev.includes(id)) {
         return prev.filter(sid => sid !== id);
@@ -166,49 +219,169 @@ export default function Home() {
     });
   };
 
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    // Required by some browsers to allow drag to start
+    try {
+      e.dataTransfer?.setData('text/plain', String(index));
+      e.dataTransfer!.effectAllowed = 'move';
+    } catch {
+      // ignore
+    }
+    setDraggedIndex(index);
+  };
+
+  // Note: Bootcamper cards set 'text/bootcamper' on dragStart themselves.
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    // Only reorder when there is an active dragged index
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    // selectedStreamers holds ids in the order user selected them. When streamsToShow
+    // is backed by selectedStreams (user has selection), indices align. Otherwise
+    // we don't support reordering.
+    if (selectedStreamers.length === 0) return;
+
+    const newOrder = [...selectedStreamers];
+    const draggedId = newOrder[draggedIndex];
+    newOrder.splice(draggedIndex, 1);
+    newOrder.splice(index, 0, draggedId);
+
+    setSelectedStreamers(newOrder);
+    setDraggedIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
+  const handleAddToggle = (bootcamper: Bootcamper) => {
+    // Only allow adding if the bootcamper is currently streaming live
+    const isStreaming = !!(bootcamper.twitchStreams && bootcamper.twitchStreams.length > 0 && bootcamper.twitchStreams[0].live);
+    // If it's not streaming and not currently selected, ignore (can't add)
+    if (!isStreaming && !selectedStreamers.includes(bootcamper.id)) return;
+    // If this is a default-displayed streamer (no explicit selection yet) and the
+    // id is not in selectedStreamers, we want to switch to explicit selection mode
+    // and initialize selectedStreamers to the currently visible streams minus this id.
+    if (!explicitSelection && !selectedStreamers.includes(bootcamper.id) && streamsToShow.some(s => s.id === bootcamper.id)) {
+      const initial = streamsToShow.map(s => s.id).filter(id => id !== bootcamper.id).slice(0, 4);
+      setExplicitSelection(true);
+      setSelectedStreamers(initial);
+      return;
+    }
+
+    setExplicitSelection(true);
+    setSelectedStreamers(prev => {
+      if (prev.includes(bootcamper.id)) {
+        return prev.filter(s => s !== bootcamper.id);
+      }
+      if (prev.length >= 4) return prev;
+      return [...prev, bootcamper.id];
+    });
+  };
+
+  const removeStream = (id: string) => {
+    if (!explicitSelection) {
+      // switch to explicit and initialize to streamsToShow minus id
+      const initial = streamsToShow.map(s => s.id).filter(sid => sid !== id).slice(0, 4);
+      setExplicitSelection(true);
+      setSelectedStreamers(initial);
+      return;
+    }
+
+    setSelectedStreamers(prev => prev.filter(s => s !== id));
+  };
+
+  // Handle drop from external source (bootcamper list) or internal drops
+  const handleDrop = (e: React.DragEvent, index?: number) => {
+    e.preventDefault();
+    // External drop (new bootcamper id)
+    const bootcamperId = e.dataTransfer?.getData('text/bootcamper');
+    if (bootcamperId) {
+      // Ensure this bootcamper is currently a live streamer
+      const candidate = liveStreamers.find(s => s.id === bootcamperId);
+      if (!candidate || !candidate.twitchStreams || candidate.twitchStreams.length === 0 || !candidate.twitchStreams[0].live) {
+        setDraggedIndex(null);
+        return;
+      }
+      // If already selected, ignore
+      if (selectedStreamers.includes(bootcamperId)) {
+        setDraggedIndex(null);
+        return;
+      }
+
+      if (selectedStreamers.length >= 4) {
+        // max reached
+        setDraggedIndex(null);
+        return;
+      }
+
+  setExplicitSelection(true);
+  const newOrder = [...selectedStreamers];
+      if (typeof index === 'number') {
+        newOrder.splice(index, 0, bootcamperId);
+      } else {
+        newOrder.push(bootcamperId);
+      }
+      setSelectedStreamers(newOrder);
+      setDraggedIndex(null);
+      return;
+    }
+
+    // If internal move (we already handle reorder on dragOver), just clear
+    setDraggedIndex(null);
+  };
+
+  // clearSelection removed — clearing is handled via explicit selection controls or removeStream
+
+  const handleLobbyClick = (bootcamperId: string) => {
+    setSelectedLobbyId(bootcamperId);
+    setShowLobbyModal(true);
+  };
+
   // Generate Twitch embed URLs
   const getTwitchEmbedUrl = (twitchLogin: string) => {
-    // Now that we have a proper domain, use it consistently
-    const getParentDomains = () => {
-      const domains = [];
-      
-      if (typeof window !== 'undefined') {
-        // Client-side: use current location
-        const { hostname, port } = window.location;
-        domains.push(hostname);
-        if (port && port !== '80' && port !== '443') {
-          domains.push(`${hostname}:${port}`);
-        }
+    // For local development prefer parent=localhost (no port) to avoid Twitch
+    // rejecting the colon in host:port combinations. For production we include
+    // the configured NEXT_PUBLIC_APP_URL host (and port if non-standard).
+    const parentDomains: string[] = [];
+
+    if (typeof window !== 'undefined') {
+      const { hostname } = window.location;
+      // If running on localhost or 127.0.0.1, use hostname only (no port)
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        parentDomains.push(hostname);
       } else {
-        // Server-side: extract from NEXT_PUBLIC_APP_URL
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-        if (appUrl) {
-          try {
-            const url = new URL(appUrl);
-            domains.push(url.hostname);
-            // For standard HTTPS (443), don't include port
-            const isStandardPort = (url.protocol === 'https:' && (url.port === '443' || !url.port)) || 
-                                  (url.protocol === 'http:' && (url.port === '80' || !url.port));
-            if (!isStandardPort) {
-              domains.push(`${url.hostname}:${url.port}`);
-            }
-          } catch {
-            domains.push('lol-bootcamp-tracker.romitsagu.com');
-          }
-        } else {
-          domains.push('lol-bootcamp-tracker.romitsagu.com');
+        // Use hostname, and also include host:port only if port is standardly required
+        const { port } = window.location;
+        parentDomains.push(hostname);
+        if (port && port !== '80' && port !== '443') {
+          parentDomains.push(`${hostname}:${port}`);
         }
       }
-      
-      // Add localhost for development
-      domains.push('localhost', '127.0.0.1');
-      
-      return [...new Set(domains)]; // Remove duplicates
-    };
+    } else {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+      if (appUrl) {
+        try {
+          const url = new URL(appUrl);
+          parentDomains.push(url.hostname);
+          if (url.port && url.port !== '80' && url.port !== '443') {
+            parentDomains.push(`${url.hostname}:${url.port}`);
+          }
+        } catch {
+          parentDomains.push('lol-bootcamp-tracker.romitsagu.com');
+        }
+      } else {
+        parentDomains.push('lol-bootcamp-tracker.romitsagu.com');
+      }
+    }
 
-    const parentDomains = getParentDomains();
+    // Ensure localhost is included for developer testing
+    if (!parentDomains.includes('localhost')) parentDomains.push('localhost');
+    if (!parentDomains.includes('127.0.0.1')) parentDomains.push('127.0.0.1');
+
     const parentParams = parentDomains.map(domain => `parent=${domain}`).join('&');
-    
     return `https://player.twitch.tv/?channel=${twitchLogin}&${parentParams}&autoplay=false`;
   };
 
@@ -328,6 +501,8 @@ export default function Home() {
 
             {displayStreamers.length > 0 ? (
               <>
+                {/* Stream Control Toolbar removed — simplified UX */}
+
                 {/* Dynamic layouts based on stream count */}
                 <div className={`grid gap-3 ${
                   streamsToShow.length === 1 ? 'grid-cols-1' :
@@ -335,16 +510,78 @@ export default function Home() {
                   streamsToShow.length === 3 ? 'grid-cols-2' : // 2 on top, 1 on bottom
                   'grid-cols-2' // 4 streams in 2x2
                 }`}>
+                  {streamsToShow.length === 0 && (
+                    <div className="col-span-2 aspect-[16/9] rounded-xl bg-gradient-to-br from-gray-900 via-gray-800 to-black flex items-center justify-center text-center p-8">
+                      <div className="max-w-xl">
+                        <h2 className="text-2xl font-semibold text-gray-100 mb-2">No streams selected</h2>
+                        <p className="text-gray-400">Click &quot;Add&quot; on a bootcamper, or drag a live bootcamper here to start watching. You can also clear selections to see a blank canvas.</p>
+                      </div>
+                    </div>
+                  )}
                   {streamsToShow.map((streamer, index) => (
-                    <div 
-                      key={streamer.id} 
+                    <div
+                      key={streamer.id}
+                      draggable={selectedStreamers.length > 0}
+                      onDragStart={(e) => handleDragStart(e, index)}
+                      onDragOver={(e) => handleDragOver(e, index)}
+                      onDragEnd={() => handleDragEnd()}
+                      onDrop={(e) => handleDrop(e, index)}
                       className={`${
                         streamsToShow.length === 1 ? 'col-span-1 aspect-video' :
                         streamsToShow.length === 2 ? 'col-span-1 aspect-video' :
                         streamsToShow.length === 3 && index === 2 ? 'col-span-2 aspect-[2/1]' : // Wide bottom stream for 3-stream
                         'col-span-1 aspect-video'
-                      } bg-gray-900 rounded-xl overflow-hidden relative group ring-1 ring-gray-800 hover:ring-purple-500/50 transition-all`}
+                      } bg-gray-900 rounded-xl overflow-hidden relative group ring-1 ring-gray-800 hover:ring-purple-500/50 transform-gpu will-change-transform transition-transform duration-200 ease-in-out ${
+                        draggedIndex === index ? 'opacity-50 scale-95' : ''
+                      } ${selectedStreamers.length > 0 ? 'cursor-move' : ''}`}
                     >
+                      {/* Selection Toggle Overlay */}
+                      <div className="absolute top-2 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleStreamerSelection(streamer.id);
+                          }}
+                          className={`p-2 rounded-lg backdrop-blur-sm transition-all ${
+                            selectedStreamers.includes(streamer.id)
+                              ? 'bg-purple-500 text-white ring-2 ring-purple-400'
+                              : 'bg-black/50 text-gray-300 hover:bg-black/70'
+                          }`}
+                          title={selectedStreamers.includes(streamer.id) ? 'Deselect stream' : 'Select stream'}
+                        >
+                          {selectedStreamers.includes(streamer.id) ? (
+                            <Eye className="w-4 h-4" />
+                          ) : (
+                            <EyeOff className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Visible Drag Handle + Close Button */}
+                      <div className="absolute top-2 left-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                        <div
+                          onMouseDown={() => { if (selectedStreamers.length > 0) setDraggedIndex(index); }}
+                          className={`p-2 bg-black/60 backdrop-blur-sm rounded-lg text-gray-200 ${selectedStreamers.length === 0 ? 'opacity-90' : 'opacity-100'}`}
+                          title="Drag to reorder"
+                        >
+                          <GripVertical className="w-4 h-4" />
+                        </div>
+                      </div>
+
+                      <div className="absolute top-2 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Remove this streamer respecting explicitSelection
+                            removeStream(streamer.id);
+                          }}
+                          title="Close stream"
+                          className="p-2 bg-black/60 backdrop-blur-sm rounded-lg text-gray-200 hover:bg-red-600/80"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
                       <iframe
                         src={getTwitchEmbedUrl(streamer.twitchLogin!)}
                         width="100%"
@@ -429,11 +666,30 @@ export default function Home() {
             </div>
             <LiveGamesSection
               inGameBootcampers={inGameBootcampers}
-              expandedLobby={expandedLobby}
-              onToggleLobby={id => setExpandedLobby(prev => ({ ...prev, [id]: !prev[id] }))}
+              onLobbyClick={handleLobbyClick}
             />
           </div>
         </div>
+
+        {/* Lobby Modal */}
+        <Modal
+          isOpen={showLobbyModal}
+          onClose={() => {
+            setShowLobbyModal(false);
+            setSelectedLobbyId(null);
+          }}
+          title="Game Lobby Details"
+          maxWidth="6xl"
+        >
+          {selectedLobbyId && (
+            <div className="space-y-4">
+              <LiveGamesSection
+                inGameBootcampers={inGameBootcampers.filter(bc => bc.id === selectedLobbyId)}
+                expandedByDefault={true}
+              />
+            </div>
+          )}
+        </Modal>
 
         {/* All Bootcampers */}
         <div className="card-modern p-6">
@@ -452,21 +708,48 @@ export default function Home() {
             <TabsContent value="all" className="mt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {bootcampers.map((bootcamper) => (
-                  <BootcamperCard key={bootcamper.id} bootcamper={bootcamper} />
+                  <BootcamperCard
+                    key={bootcamper.id}
+                    bootcamper={bootcamper}
+                    onAdd={() => handleAddToggle(bootcamper)}
+                    isSelected={
+                      selectedStreamers.includes(bootcamper.id) ||
+                      (selectedStreamers.length === 0 && streamsToShow.some(s => s.id === bootcamper.id))
+                    }
+                    canAdd={selectedStreamers.length < 4}
+                  />
                 ))}
               </div>
             </TabsContent>
             <TabsContent value="live" className="mt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {inGameBootcampers.map((bootcamper) => (
-                  <BootcamperCard key={bootcamper.id} bootcamper={bootcamper} />
+                  <BootcamperCard
+                    key={bootcamper.id}
+                    bootcamper={bootcamper}
+                    onAdd={() => handleAddToggle(bootcamper)}
+                    isSelected={
+                      selectedStreamers.includes(bootcamper.id) ||
+                      (selectedStreamers.length === 0 && streamsToShow.some(s => s.id === bootcamper.id))
+                    }
+                    canAdd={selectedStreamers.length < 4}
+                  />
                 ))}
               </div>
             </TabsContent>
             <TabsContent value="streaming" className="mt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {liveStreamers.map((bootcamper) => (
-                  <BootcamperCard key={bootcamper.id} bootcamper={bootcamper} />
+                  <BootcamperCard
+                    key={bootcamper.id}
+                    bootcamper={bootcamper}
+                    onAdd={() => handleAddToggle(bootcamper)}
+                    isSelected={
+                      selectedStreamers.includes(bootcamper.id) ||
+                      (selectedStreamers.length === 0 && streamsToShow.some(s => s.id === bootcamper.id))
+                    }
+                    canAdd={selectedStreamers.length < 4}
+                  />
                 ))}
               </div>
             </TabsContent>
@@ -477,7 +760,7 @@ export default function Home() {
   );
 }
 
-function BootcamperCard({ bootcamper }: { bootcamper: Bootcamper }) {
+function BootcamperCard({ bootcamper, onAdd, isSelected, canAdd }: { bootcamper: Bootcamper; onAdd?: (id: string) => void; isSelected?: boolean; canAdd?: boolean }) {
   const isLive = bootcamper.status === 'in_game';
   const isStreaming =
     bootcamper.twitchStreams &&
@@ -510,8 +793,23 @@ function BootcamperCard({ bootcamper }: { bootcamper: Bootcamper }) {
     return `https://www.deeplol.gg/summoner/${region}/${cleanName}`;
   };
 
+
+  const handleDragStartLocal = (e: React.DragEvent) => {
+    if (!isStreaming) return;
+    try {
+      e.dataTransfer?.setData('text/bootcamper', bootcamper.id);
+      e.dataTransfer!.effectAllowed = 'copy';
+    } catch {
+      // ignore
+    }
+  };
+
   return (
-    <div className="group p-4 bg-gray-900/50 rounded-xl border border-gray-800 hover:border-gray-700 hover:bg-gray-900/70 transition-all duration-200">
+    <div
+      draggable={isStreaming}
+      onDragStart={handleDragStartLocal}
+      className="group p-4 bg-gray-900/50 rounded-xl border border-gray-800 hover:border-gray-700 hover:bg-gray-900/70 transition-all duration-200"
+    >
       <div className="flex items-start justify-between mb-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -589,6 +887,30 @@ function BootcamperCard({ bootcamper }: { bootcamper: Bootcamper }) {
           {bootcamper.twitchLogin}
         </a>
       )}
+      {/* Add / Remove control for quick add to dashboard */}
+      <div className="mt-3 flex items-center gap-2">
+  {onAdd && (isStreaming || isSelected) && (
+          <button
+            type="button"
+            onClick={() => onAdd(bootcamper.id)}
+            disabled={canAdd === false && !isSelected}
+            className={`inline-flex items-center gap-2 px-2 py-1 text-xs rounded-md transition-colors ${isSelected ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+            title={isSelected ? 'Remove from dashboard' : 'Add to dashboard'}
+          >
+            {isSelected ? (
+              <>
+                <X className="w-3 h-3" />
+                Remove
+              </>
+            ) : (
+              <>
+                <GripVertical className="w-3 h-3" />
+                Add
+              </>
+            )}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

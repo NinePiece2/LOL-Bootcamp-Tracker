@@ -41,8 +41,10 @@ interface Bootcamper {
 
 interface LiveGamesSectionProps {
   inGameBootcampers: Bootcamper[];
-  expandedLobby: { [id: string]: boolean };
-  onToggleLobby: (id: string) => void;
+  expandedLobby?: { [id: string]: boolean };
+  onToggleLobby?: (id: string) => void;
+  onLobbyClick?: (bootcamperId: string) => void;
+  expandedByDefault?: boolean;
 }
 
 // Cache for champion names
@@ -85,7 +87,13 @@ const getDeeplolUrl = (riotId: string | null | undefined, summonerName: string |
   return `https://www.deeplol.gg/summoner/${region}/${cleanName}`;
 };
 
-const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({ inGameBootcampers, expandedLobby, onToggleLobby }) => {
+const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({ 
+  inGameBootcampers, 
+  expandedLobby, 
+  onToggleLobby,
+  onLobbyClick,
+  expandedByDefault = false
+}) => {
   const [enrichedBootcampers, setEnrichedBootcampers] = useState<Bootcamper[]>([]);
 
   useEffect(() => {
@@ -212,7 +220,16 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({ inGameBootcampers, 
             p.riotId === bootcamper.riotId ||
             p.puuid === bootcamper.puuid
           );
-          const isExpanded = expandedLobby[bootcamper.id] || false;
+          const isExpanded = expandedByDefault || (expandedLobby?.[bootcamper.id] || false);
+          
+          const handleToggleClick = () => {
+            if (onLobbyClick) {
+              onLobbyClick(bootcamper.id);
+            } else if (onToggleLobby) {
+              onToggleLobby(bootcamper.id);
+            }
+          };
+          
           return (
             <div
               key={bootcamper.id}
@@ -246,12 +263,14 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({ inGameBootcampers, 
                       {self.championName}
                     </span>
                   )}
-                  <button
-                    className="ml-auto px-2 py-1 text-xs bg-gray-800 rounded hover:bg-gray-700 text-gray-300"
-                    onClick={() => onToggleLobby(bootcamper.id)}
-                  >
-                    {isExpanded ? "Hide Lobby" : "Show Lobby"}
-                  </button>
+                  {!expandedByDefault && (
+                    <button
+                      className="ml-auto px-2 py-1 text-xs bg-gray-800 rounded hover:bg-gray-700 text-gray-300"
+                      onClick={handleToggleClick}
+                    >
+                      {isExpanded ? "Hide Lobby" : "Show Lobby"}
+                    </button>
+                  )}
                 </div>
               )}
               {isExpanded && lobby.length > 0 && (
