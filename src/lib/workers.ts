@@ -3,11 +3,8 @@ import { prisma } from '@/lib/db';
 import { getRiotClient } from '@/lib/riot-api';
 import { getTwitchClient } from '@/lib/twitch-api';
 import { RiotRegion, REGION_TO_PLATFORM } from '@/lib/types';
-import { createRedisConnection } from '@/lib/redis';
-import Redis from 'ioredis';
 
-// Global connection and queue variables - initialized in initializeWorkers()
-let redisConnection: Redis | null = null;
+// Global queue and worker variables - initialized in initializeWorkers()
 let spectatorQueue: Queue;
 let matchDataQueue: Queue;
 let twitchStreamQueue: Queue;
@@ -537,23 +534,35 @@ export async function scheduleSummonerNameChecks() {
 export async function initializeWorkers() {
   console.log('Initializing worker system...');
   
-  // Create Redis connection
-  console.log('Creating Redis connection...');
-  redisConnection = createRedisConnection();
+  // Create connection config for BullMQ
+  console.log('Creating Redis connection config...');
+  const connectionConfig = process.env.REDIS_SENTINEL_HOSTS ? {
+    // Sentinel configuration
+    sentinels: process.env.REDIS_SENTINEL_HOSTS.split(',').map(host => {
+      const [hostname, port] = host.split(':');
+      return { host: hostname, port: parseInt(port) };
+    }),
+    name: process.env.REDIS_SENTINEL_MASTER || 'mymaster',
+    maxRetriesPerRequest: null,
+    enableOfflineQueue: true,
+    family: 4,
+  } : {
+    // Direct Redis configuration
+    host: new URL(process.env.REDIS_URL || 'redis://localhost:6379').hostname,
+    port: parseInt(new URL(process.env.REDIS_URL || 'redis://localhost:6379').port) || 6379,
+    maxRetriesPerRequest: null,
+    enableOfflineQueue: true,
+    family: 4,
+  };
   
-  // Wait for connection to be ready
-  console.log('Waiting for Redis connection to be ready...');
-  await redisConnection.ping();
-  console.log('Redis connection established successfully');
-  
-  // Create queues
+  // Create queues with individual connections
   console.log('Creating queues...');
-  spectatorQueue = new Queue('spectator-checks', { connection: redisConnection });
-  matchDataQueue = new Queue('match-data', { connection: redisConnection });
-  twitchStreamQueue = new Queue('twitch-stream-checks', { connection: redisConnection });
-  summonerNameQueue = new Queue('summoner-name-updates', { connection: redisConnection });
+  spectatorQueue = new Queue('spectator-checks', { connection: connectionConfig });
+  matchDataQueue = new Queue('match-data', { connection: connectionConfig });
+  twitchStreamQueue = new Queue('twitch-stream-checks', { connection: connectionConfig });
+  summonerNameQueue = new Queue('summoner-name-updates', { connection: connectionConfig });
   
-  // Create workers
+  // Create workers with individual connections
   console.log('Creating workers...');
   spectatorWorker = new Worker<SpectatorJobData>(
     'spectator-checks',
@@ -561,7 +570,7 @@ export async function initializeWorkers() {
       await checkSpectator(job.data);
     },
     {
-      connection: redisConnection,
+      connection: connectionConfig,
       concurrency: 5,
     }
   );
@@ -572,7 +581,7 @@ export async function initializeWorkers() {
       await fetchMatchData(job.data);
     },
     {
-      connection: redisConnection,
+      connection: connectionConfig,
       concurrency: 2,
     }
   );
@@ -583,7 +592,7 @@ export async function initializeWorkers() {
       await updateSummonerName(job.data);
     },
     {
-      connection: redisConnection,
+      connection: connectionConfig,
       concurrency: 2,
     }
   );
@@ -594,7 +603,7 @@ export async function initializeWorkers() {
       await checkTwitchStream(job.data);
     },
     {
-      connection: redisConnection,
+      connection: connectionConfig,
       concurrency: 3,
     }
   );
@@ -671,7 +680,6 @@ export async function shutdownWorkers() {
   if (matchDataQueue) await matchDataQueue.close();
   if (twitchStreamQueue) await twitchStreamQueue.close();
   if (summonerNameQueue) await summonerNameQueue.close();
-  if (redisConnection) await redisConnection.quit();
   
   console.log('Worker system shut down');
 }

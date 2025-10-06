@@ -27,6 +27,12 @@ export function createRedisConnection(): Redis {
       // Keep connection alive
       keepAlive: 30000,
       family: 4, // Use IPv4
+      // Better connection settings for Kubernetes
+      enableReadyCheck: false,
+      // TCP settings
+      autoResubscribe: true,
+      autoResendUnfulfilledCommands: true,
+      commandTimeout: 5000,
     });
   } else {
     // Development: Direct Redis connection
