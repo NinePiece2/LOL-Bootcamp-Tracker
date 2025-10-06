@@ -1,0 +1,34 @@
+FROM node:22-alpine AS migrate
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json ./
+RUN npm ci --only=production
+
+# Copy Prisma schema and migration files
+COPY prisma ./prisma
+COPY tsconfig.json ./tsconfig.json
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Create migration script
+RUN echo '#!/bin/sh' > migrate.sh && \
+    echo 'set -e' >> migrate.sh && \
+    echo 'echo "Starting database migration..."' >> migrate.sh && \
+    echo 'echo "Waiting for database to be ready..."' >> migrate.sh && \
+    echo 'until nc -z ${DB_HOST:-postgres-rw} ${DB_PORT:-5432}; do' >> migrate.sh && \
+    echo '  echo "Database not ready, waiting..."' >> migrate.sh && \
+    echo '  sleep 2' >> migrate.sh && \
+    echo 'done' >> migrate.sh && \
+    echo 'echo "Database is ready! Applying schema..."' >> migrate.sh && \
+    echo 'npx prisma db push --accept-data-loss' >> migrate.sh && \
+    echo 'echo "Migration completed successfully!"' >> migrate.sh && \
+    chmod +x migrate.sh
+
+# Install netcat for connection testing
+RUN apk add --no-cache netcat-openbsd
+
+EXPOSE 3000
+CMD ["./migrate.sh"]
