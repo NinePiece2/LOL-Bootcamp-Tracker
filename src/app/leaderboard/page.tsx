@@ -146,7 +146,7 @@ export default function LeaderboardPage() {
 
   const summonerTemplate = (props: LeaderboardEntry) => {
     return (
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 justify-center">
         <div className="flex flex-col">
           <span className="font-medium text-lg">{props.name || props.summonerName}</span>
           {props.riotId && (
@@ -201,7 +201,7 @@ export default function LeaderboardPage() {
     };
     
     return (
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 justify-center">
         <Image 
           src={getRankEmblemUrl(rank.tier)} 
           alt={`${rank.tier} emblem`}
@@ -251,7 +251,7 @@ export default function LeaderboardPage() {
     };
     
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 justify-center">
         <Image 
           src={getRankEmblemUrl(rank.tier)} 
           alt={`${rank.tier} emblem`}
@@ -280,7 +280,7 @@ export default function LeaderboardPage() {
     const color = winRate >= 60 ? 'text-green-600' : winRate >= 50 ? 'text-yellow-600' : 'text-red-600';
     
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 justify-center">
         <span className={`font-semibold ${color}`}>
           {winRate.toFixed(1)}%
         </span>
@@ -295,7 +295,7 @@ export default function LeaderboardPage() {
     const isLive = props.status === 'in_game';
     
     return (
-      <div className="flex gap-2">
+      <div className="flex gap-2 justify-center">
         {isLive ? (
           <Badge variant="destructive">In Game</Badge>
         ) : (
@@ -427,6 +427,7 @@ export default function LeaderboardPage() {
               field="role"
               headerText="Role"
               width="120"
+              textAlign="Center"
               template={roleTemplate}
             />
             <ColumnDirective

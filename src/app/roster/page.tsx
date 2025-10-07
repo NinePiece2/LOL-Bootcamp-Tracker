@@ -93,7 +93,7 @@ export default function RosterPage() {
     const isStreaming = props.twitchStreams && props.twitchStreams.length > 0;
     
     return (
-      <div className="flex gap-2">
+      <div className="flex gap-2 justify-center">
         {isLive && <Badge variant="destructive">In Game</Badge>}
         {isStreaming && <Badge className="bg-purple-600">Live</Badge>}
         {!isLive && !isStreaming && <Badge variant="secondary">Idle</Badge>}
@@ -127,7 +127,7 @@ export default function RosterPage() {
 
   const summonerTemplate = (props: Bootcamper & { riotId?: string | null }) => {
     return (
-      <div className="flex flex-col">
+      <div className="flex flex-col justify-center">
         <span className="font-medium">{props.name || props.summonerName}</span>
         {props.name && (
           <span className="text-xs text-gray-500">{props.summonerName}</span>
@@ -243,7 +243,7 @@ export default function RosterPage() {
               field="summonerName"
               headerText="Summoner"
               width="200"
-              textAlign="Left"
+              textAlign="Center"
               template={summonerTemplate}
             />
             <ColumnDirective
@@ -256,30 +256,35 @@ export default function RosterPage() {
               field="status"
               headerText="Status"
               width="150"
+              textAlign="Center"
               template={statusTemplate}
             />
             <ColumnDirective
               field="role"
               headerText="Role"
               width="120"
+              textAlign="Center"
               template={roleTemplate}
             />
             <ColumnDirective
               field="twitchLogin"
               headerText="Twitch"
               width="150"
+              textAlign="Center"
               template={twitchTemplate}
             />
             <ColumnDirective
               field="startDate"
               headerText="Start Date"
               width="120"
+              textAlign="Center"
               template={dateTemplate('startDate')}
             />
             <ColumnDirective
               field="plannedEndDate"
               headerText="End Date"
               width="120"
+              textAlign="Center"
               template={dateTemplate('plannedEndDate')}
             />
             <ColumnDirective
