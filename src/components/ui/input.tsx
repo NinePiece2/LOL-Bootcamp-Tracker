@@ -12,7 +12,7 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
         "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
         "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
         // Date input specific styling for calendar button visibility (color-scheme controls the calendar icon)
-        type === "date" && "[color-scheme:dark]",
+        type === "date" && "[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer",
         className
       )}
       {...props}

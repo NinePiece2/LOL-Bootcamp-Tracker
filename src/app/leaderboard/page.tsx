@@ -36,21 +36,59 @@ export default function LeaderboardPage() {
   const [bootcampers, setBootcampers] = useState<LeaderboardEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // Set initial list based on user permissions
+  // Set initial list based on localStorage or user permissions
   const getInitialList = (): 'default' | 'user' => {
+    // Try to get from localStorage first (client-side only)
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('bootcamp-list-preference');
+      if (stored === 'default' || stored === 'user') {
+        return stored;
+      }
+    }
+    // Fall back to user permissions
     if (!session?.user) return 'default';
     return session.user.isAdmin ? 'default' : 'user';
   };
   
   const [currentList, setCurrentList] = useState<'default' | 'user'>(getInitialList());
 
-  // Update currentList when session changes
+  // Update currentList when session changes (only if no stored preference)
   useEffect(() => {
-    if (session?.user) {
-      const newList = session.user.isAdmin ? 'default' : 'user';
-      setCurrentList(newList);
+    if (session?.user && typeof window !== 'undefined') {
+      const stored = localStorage.getItem('bootcamp-list-preference');
+      if (!stored) {
+        const newList = session.user.isAdmin ? 'default' : 'user';
+        setCurrentList(newList);
+      }
     }
   }, [session?.user]);
+
+  // Persist list selection to localStorage and sync across tabs
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bootcamp-list-preference', currentList);
+      
+      // Broadcast change to other tabs/windows
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'bootcamp-list-preference',
+        newValue: currentList,
+      }));
+    }
+  }, [currentList]);
+
+  // Listen for changes from other tabs/windows
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'bootcamp-list-preference' && (e.newValue === 'default' || e.newValue === 'user')) {
+        setCurrentList(e.newValue);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   useEffect(() => {
     const fetchLeaderboard = async () => {
@@ -210,10 +248,10 @@ export default function LeaderboardPage() {
           className="object-contain"
           unoptimized
         />
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-0">
           <div className="flex items-center gap-2">
             <span className={`font-semibold ${tierColor}`}>
-              {tierDisplay} {rank.rank}
+              {tierDisplay}{rank.tier === 'MASTER' || rank.tier === 'GRANDMASTER' || rank.tier === 'CHALLENGER' ? '' : ` ${rank.rank}`}
             </span>
             <span className="text-sm text-gray-500">
               {rank.leaguePoints} LP
@@ -260,9 +298,9 @@ export default function LeaderboardPage() {
           className="object-contain"
           unoptimized
         />
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-0">
           <span className={`font-semibold ${tierColor}`}>
-            {tierDisplay} {rank.rank}
+            {tierDisplay}{rank.tier === 'MASTER' || rank.tier === 'GRANDMASTER' || rank.tier === 'CHALLENGER' ? '' : ` ${rank.rank}`}
           </span>
           <span className="text-xs text-gray-500">
             {rank.leaguePoints} LP
@@ -359,7 +397,7 @@ export default function LeaderboardPage() {
               </div>
             </div>
             <p className="text-sm text-gray-400 mb-1">Most Active Player</p>
-            <p className="text-xl font-bold text-white mb-1">{mostGames?.summonerName || '—'}</p>
+            <p className="text-xl font-bold text-white mb-1">{mostGames?.name || mostGames?.summonerName || '—'}</p>
             <p className="text-sm text-gray-500">
               {((mostGames?.soloQueue?.wins || 0) + (mostGames?.soloQueue?.losses || 0) + 
                 (mostGames?.flexQueue?.wins || 0) + (mostGames?.flexQueue?.losses || 0))} games played
@@ -374,7 +412,7 @@ export default function LeaderboardPage() {
               </div>
             </div>
             <p className="text-sm text-gray-400 mb-1">Highest Win Rate</p>
-            <p className="text-xl font-bold text-white mb-1">{highestWinRate?.summonerName || '—'}</p>
+            <p className="text-xl font-bold text-white mb-1">{mostGames?.name || highestWinRate?.summonerName || '—'}</p>
             <p className="text-sm text-gray-500">
               {highestWinRate?.soloQueue?.winRate?.toFixed(1) || 0}% WR
               ({(highestWinRate?.soloQueue?.wins || 0) + (highestWinRate?.soloQueue?.losses || 0)} games)

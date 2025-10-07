@@ -68,22 +68,59 @@ export default function Home() {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [explicitSelection, setExplicitSelection] = useState(false);
   
-  // Set initial list based on user permissions
-  // Regular users start with 'user', admins start with 'default'
+  // Set initial list based on localStorage or user permissions
   const getInitialList = (): 'default' | 'user' => {
+    // Try to get from localStorage first (client-side only)
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('bootcamp-list-preference');
+      if (stored === 'default' || stored === 'user') {
+        return stored;
+      }
+    }
+    // Fall back to user permissions
     if (!session?.user) return 'default';
     return session.user.isAdmin ? 'default' : 'user';
   };
   
   const [currentList, setCurrentList] = useState<'default' | 'user'>(getInitialList());
 
-  // Update currentList when session changes
+  // Update currentList when session changes (only if no stored preference)
   useEffect(() => {
-    if (session?.user) {
-      const newList = session.user.isAdmin ? 'default' : 'user';
-      setCurrentList(newList);
+    if (session?.user && typeof window !== 'undefined') {
+      const stored = localStorage.getItem('bootcamp-list-preference');
+      if (!stored) {
+        const newList = session.user.isAdmin ? 'default' : 'user';
+        setCurrentList(newList);
+      }
     }
   }, [session?.user]);
+
+  // Persist list selection to localStorage and sync across tabs
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bootcamp-list-preference', currentList);
+      
+      // Broadcast change to other tabs/windows
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'bootcamp-list-preference',
+        newValue: currentList,
+      }));
+    }
+  }, [currentList]);
+
+  // Listen for changes from other tabs/windows
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'bootcamp-list-preference' && (e.newValue === 'default' || e.newValue === 'user')) {
+        setCurrentList(e.newValue);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -420,7 +457,7 @@ export default function Home() {
               {bootcampers.length}
             </div>
             <div className="text-sm text-gray-400 mb-1">Total Bootcampers</div>
-            <div className="h-1 w-12 mx-auto bg-gradient-to-r from-blue-500 to-purple-600 rounded-full opacity-60 group-hover:opacity-100 transition-opacity" />
+            <div className="h-1 w-12 mx-auto bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full opacity-60 group-hover:opacity-100 transition-opacity" />
           </div>
           <div className="card-modern p-6 text-center group">
             <div className="text-3xl font-bold text-white mb-2 flex items-center justify-center gap-2">
@@ -701,9 +738,9 @@ export default function Home() {
           </div>
           <Tabs defaultValue="all" className="w-full">
             <TabsList className="bg-gray-900 border border-gray-800">
-              <TabsTrigger value="all" className="data-[state=active]:bg-gray-800">All</TabsTrigger>
-              <TabsTrigger value="live" className="data-[state=active]:bg-gray-800">Live</TabsTrigger>
-              <TabsTrigger value="streaming" className="data-[state=active]:bg-gray-800">Streaming</TabsTrigger>
+              <TabsTrigger value="all" className="data-[state=active]:bg-gray-800 cursor-pointer">All</TabsTrigger>
+              <TabsTrigger value="live" className="data-[state=active]:bg-gray-800 cursor-pointer">Live</TabsTrigger>
+              <TabsTrigger value="streaming" className="data-[state=active]:bg-gray-800 cursor-pointer">Streaming</TabsTrigger>
             </TabsList>
             <TabsContent value="all" className="mt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

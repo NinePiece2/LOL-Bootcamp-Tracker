@@ -41,8 +41,8 @@ export function Navigation() {
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-8">
               <Link href="/" className="flex items-center gap-2 text-white hover:text-gray-200 transition-colors">
-                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                  <span className="text-sm font-bold">L</span>
+                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-400 flex items-center justify-center">
+                  <span className="text-xs font-bold text-black">TKR</span>
                 </div>
                 <span className="text-lg font-semibold tracking-tight">
                   LoL Bootcamp
@@ -62,7 +62,7 @@ export function Navigation() {
                   >
                     {link.label}
                     {pathname === link.href && (
-                      <div className="absolute inset-x-1 -bottom-px h-px bg-gradient-to-r from-blue-500 to-purple-600" />
+                      <div className="absolute inset-x-1 -bottom-px h-px bg-gradient-to-r from-emerald-500 to-emerald-400" />
                     )}
                   </Link>
                 ))}
