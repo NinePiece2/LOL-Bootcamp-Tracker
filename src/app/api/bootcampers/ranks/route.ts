@@ -19,6 +19,13 @@ type BootcamperWithGames = {
   plannedEndDate: string | Date | null;
   actualEndDate: string | Date | null;
   status: string;
+  peakSoloTier: string | null;
+  peakSoloRank: string | null;
+  peakSoloLP: number | null;
+  peakFlexTier: string | null;
+  peakFlexRank: string | null;
+  peakFlexLP: number | null;
+  peakUpdatedAt: Date | null;
   games: Array<{
     id: string;
     riotGameId: string;
@@ -101,28 +108,27 @@ export async function GET(request: NextRequest) {
             (entry) => entry.queueType === 'RANKED_FLEX_SR'
           );
 
-          // Determine peak rank (for now, just use current highest rank)
-          // TODO: Track historical peak rank in database
-          const rankOrder: Record<string, number> = {
-            'CHALLENGER': 8,
-            'GRANDMASTER': 7,
-            'MASTER': 6,
-            'DIAMOND': 5,
-            'EMERALD': 4,
-            'PLATINUM': 3,
-            'GOLD': 2,
-            'SILVER': 1,
-            'BRONZE': 0,
-            'IRON': -1,
-          };
-
+          // Get peak rank from database (stored by worker)
           let peakRank = null;
-          if (soloQueue && flexQueue) {
-            const soloValue = rankOrder[soloQueue.tier] || 0;
-            const flexValue = rankOrder[flexQueue.tier] || 0;
-            peakRank = soloValue >= flexValue ? soloQueue : flexQueue;
-          } else {
-            peakRank = soloQueue || flexQueue;
+          if (bootcamper.peakSoloTier && bootcamper.peakSoloRank !== null && bootcamper.peakSoloLP !== null) {
+            peakRank = {
+              tier: bootcamper.peakSoloTier,
+              rank: bootcamper.peakSoloRank,
+              leaguePoints: bootcamper.peakSoloLP,
+              wins: 0, // Not tracked historically
+              losses: 0, // Not tracked historically
+              winRate: 0, // Not tracked historically
+            };
+          } else if (bootcamper.peakFlexTier && bootcamper.peakFlexRank !== null && bootcamper.peakFlexLP !== null) {
+            // Fall back to flex peak if no solo peak
+            peakRank = {
+              tier: bootcamper.peakFlexTier,
+              rank: bootcamper.peakFlexRank,
+              leaguePoints: bootcamper.peakFlexLP,
+              wins: 0,
+              losses: 0,
+              winRate: 0,
+            };
           }
 
           return {

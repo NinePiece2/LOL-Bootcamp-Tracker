@@ -73,6 +73,13 @@ model Bootcamper {
   name           String?
   isDefault      Boolean          @default(false) @map("is_default")
   userId         String?          @map("user_id")
+  peakSoloTier   String?          @map("peak_solo_tier")
+  peakSoloRank   String?          @map("peak_solo_rank")
+  peakSoloLP     Int?             @map("peak_solo_lp")
+  peakFlexTier   String?          @map("peak_flex_tier")
+  peakFlexRank   String?          @map("peak_flex_rank")
+  peakFlexLP     Int?             @map("peak_flex_lp")
+  peakUpdatedAt  DateTime?        @map("peak_updated_at")
   user           User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
   games          Game[]
   teamMembers    TeamMember[]

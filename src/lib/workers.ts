@@ -9,10 +9,12 @@ let spectatorQueue: Queue;
 let matchDataQueue: Queue;
 let twitchStreamQueue: Queue;
 let summonerNameQueue: Queue;
+let rankQueue: Queue;
 let spectatorWorker: Worker;
 let matchDataWorker: Worker;
 let twitchStreamWorker: Worker;
 let summonerNameWorker: Worker;
+let rankWorker: Worker;
 
 interface SpectatorJobData {
   bootcamperId: string;
@@ -36,6 +38,12 @@ interface TwitchStreamJobData {
   bootcamperId: string;
   twitchUserId: string;
   twitchLogin: string;
+}
+
+interface RankJobData {
+  bootcamperId: string;
+  puuid: string;
+  region: RiotRegion;
 }
 
 /**
@@ -214,6 +222,17 @@ async function checkSpectator(data: SpectatorJobData) {
             region,
           },
           { delay: 60000 } // Wait 60 seconds before fetching match data
+        );
+
+        // Schedule rank check after game ends (with delay to allow rank to update)
+        await rankQueue.add(
+          'check-rank-after-game',
+          {
+            bootcamperId,
+            puuid,
+            region,
+          },
+          { delay: 90000 } // Wait 90 seconds to allow Riot API to update rank
         );
 
         // TODO: Emit WebSocket event for game ended
@@ -406,6 +425,141 @@ async function checkTwitchStream(data: TwitchStreamJobData) {
 }
 
 /**
+ * Check current rank and update peak rank if higher
+ */
+async function checkAndUpdatePeakRank(data: RankJobData) {
+  const { bootcamperId, puuid, region } = data;
+  
+  if (!puuid) {
+    console.warn(`Skipping rank check for bootcamper ${bootcamperId}: PUUID missing`);
+    return;
+  }
+  
+  const riotClient = getRiotClient();
+  const bootcamper = await prisma.bootcamper.findUnique({
+    where: { id: bootcamperId },
+  });
+
+  if (!bootcamper) {
+    console.warn(`Bootcamper ${bootcamperId} not found, skipping rank check`);
+    return;
+  }
+
+  try {
+    const leagueEntries = await riotClient.getLeagueEntries(region, puuid);
+    
+    const soloQueue = leagueEntries.find(
+      (entry) => entry.queueType === 'RANKED_SOLO_5x5'
+    );
+    const flexQueue = leagueEntries.find(
+      (entry) => entry.queueType === 'RANKED_FLEX_SR'
+    );
+
+    const rankOrder: Record<string, number> = {
+      'CHALLENGER': 8,
+      'GRANDMASTER': 7,
+      'MASTER': 6,
+      'DIAMOND': 5,
+      'EMERALD': 4,
+      'PLATINUM': 3,
+      'GOLD': 2,
+      'SILVER': 1,
+      'BRONZE': 0,
+      'IRON': -1,
+    };
+
+    const divisionOrder: Record<string, number> = {
+      'I': 4,
+      'II': 3,
+      'III': 2,
+      'IV': 1,
+    };
+
+    // Helper function to calculate total LP score for ranking comparison
+    const calculateScore = (tier: string, rank: string, lp: number) => {
+      const tierValue = rankOrder[tier] || 0;
+      const divisionValue = divisionOrder[rank] || 0;
+      // Master+ tiers don't have divisions
+      if (tierValue >= 6) {
+        return tierValue * 1000 + lp;
+      }
+      return tierValue * 1000 + divisionValue * 100 + lp;
+    };
+
+    const updates: Record<string, unknown> = {
+      peakUpdatedAt: new Date(),
+    };
+
+    let updated = false;
+
+    // Check and update Solo Queue peak
+    if (soloQueue) {
+      const currentScore = calculateScore(
+        soloQueue.tier,
+        soloQueue.rank,
+        soloQueue.leaguePoints
+      );
+      
+      let peakScore = -1;
+      if (bootcamper.peakSoloTier && bootcamper.peakSoloRank !== null && bootcamper.peakSoloLP !== null) {
+        peakScore = calculateScore(
+          bootcamper.peakSoloTier,
+          bootcamper.peakSoloRank,
+          bootcamper.peakSoloLP
+        );
+      }
+
+      if (currentScore > peakScore) {
+        updates.peakSoloTier = soloQueue.tier;
+        updates.peakSoloRank = soloQueue.rank;
+        updates.peakSoloLP = soloQueue.leaguePoints;
+        updated = true;
+        console.log(`📈 New Solo Queue peak for ${bootcamper.summonerName}: ${soloQueue.tier} ${soloQueue.rank} ${soloQueue.leaguePoints}LP`);
+      }
+    }
+
+    // Check and update Flex Queue peak
+    if (flexQueue) {
+      const currentScore = calculateScore(
+        flexQueue.tier,
+        flexQueue.rank,
+        flexQueue.leaguePoints
+      );
+      
+      let peakScore = -1;
+      if (bootcamper.peakFlexTier && bootcamper.peakFlexRank !== null && bootcamper.peakFlexLP !== null) {
+        peakScore = calculateScore(
+          bootcamper.peakFlexTier,
+          bootcamper.peakFlexRank,
+          bootcamper.peakFlexLP
+        );
+      }
+
+      if (currentScore > peakScore) {
+        updates.peakFlexTier = flexQueue.tier;
+        updates.peakFlexRank = flexQueue.rank;
+        updates.peakFlexLP = flexQueue.leaguePoints;
+        updated = true;
+        console.log(`📈 New Flex Queue peak for ${bootcamper.summonerName}: ${flexQueue.tier} ${flexQueue.rank} ${flexQueue.leaguePoints}LP`);
+      }
+    }
+
+    // Update database if there were any changes
+    if (updated || !bootcamper.peakUpdatedAt) {
+      await prisma.bootcamper.update({
+        where: { id: bootcamperId },
+        data: updates,
+      });
+    }
+  } catch (error) {
+    // Silently handle 404s (unranked players)
+    if (!(error instanceof Error && error.message.includes('404'))) {
+      console.error(`Error checking rank for ${bootcamper.summonerName}:`, error);
+    }
+  }
+}
+
+/**
  * Schedule spectator checks for all active bootcampers
  */
 export async function scheduleSpectatorChecks() {
@@ -584,6 +738,7 @@ export async function initializeWorkers() {
   matchDataQueue = new Queue('match-data', { connection: connectionConfig });
   twitchStreamQueue = new Queue('twitch-stream-checks', { connection: connectionConfig });
   summonerNameQueue = new Queue('summoner-name-updates', { connection: connectionConfig });
+  rankQueue = new Queue('rank-checks', { connection: connectionConfig });
   
   // Create workers with individual connections
   console.log('Creating workers...');
@@ -624,6 +779,17 @@ export async function initializeWorkers() {
     'twitch-stream-checks',
     async (job: Job<TwitchStreamJobData>) => {
       await checkTwitchStream(job.data);
+    },
+    {
+      connection: connectionConfig,
+      concurrency: 3,
+    }
+  );
+
+  rankWorker = new Worker<RankJobData>(
+    'rank-checks',
+    async (job: Job<RankJobData>) => {
+      await checkAndUpdatePeakRank(job.data);
     },
     {
       connection: connectionConfig,
@@ -696,6 +862,22 @@ export async function initializeWorkers() {
       console.error('❌ Twitch stream worker error:', err.message);
     }
   });
+
+  rankWorker.on('completed', () => {
+    // Silent success to avoid spam
+  });
+
+  rankWorker.on('failed', (job, err) => {
+    if (!err.message.includes('Connection is closed') && !err.message.includes('404')) {
+      console.error(`Rank check failed for bootcamper ${job?.data.bootcamperId}:`, err.message);
+    }
+  });
+
+  rankWorker.on('error', (err) => {
+    if (!err.message.includes('Connection is closed')) {
+      console.error('❌ Rank worker error:', err.message);
+    }
+  });
   
   // Clear old jobs and reschedule with updated data
   console.log('Clearing old spectator jobs...');
@@ -706,6 +888,9 @@ export async function initializeWorkers() {
   
   console.log('Clearing old summoner name jobs...');
   await summonerNameQueue.obliterate({ force: true });
+
+  console.log('Clearing old rank jobs...');
+  await rankQueue.obliterate({ force: true });
   
   // Schedule initial spectator checks with new PUUID-based jobs
   await scheduleSpectatorChecks();
@@ -715,6 +900,8 @@ export async function initializeWorkers() {
   
   // Schedule summoner name checks (runs every hour)
   await scheduleSummonerNameChecks();
+
+  // Note: Rank checks are triggered automatically after each game ends (not on a schedule)
   
   console.log('Worker system initialized successfully');
   
@@ -788,10 +975,12 @@ export async function shutdownWorkers() {
   if (matchDataWorker) await matchDataWorker.close();
   if (twitchStreamWorker) await twitchStreamWorker.close();
   if (summonerNameWorker) await summonerNameWorker.close();
+  if (rankWorker) await rankWorker.close();
   if (spectatorQueue) await spectatorQueue.close();
   if (matchDataQueue) await matchDataQueue.close();
   if (twitchStreamQueue) await twitchStreamQueue.close();
   if (summonerNameQueue) await summonerNameQueue.close();
+  if (rankQueue) await rankQueue.close();
   
   console.log('Worker system shut down');
 }
@@ -803,6 +992,7 @@ export function getQueues() {
     matchDataQueue,
     twitchStreamQueue,
     summonerNameQueue,
+    rankQueue,
   };
 }
 
@@ -812,5 +1002,6 @@ export function getWorkers() {
     matchDataWorker,
     twitchStreamWorker,
     summonerNameWorker,
+    rankWorker,
   };
 }
