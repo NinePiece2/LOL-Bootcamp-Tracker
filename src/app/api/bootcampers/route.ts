@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
       twitchLogin: data.twitchLogin,
       twitchUserId,
       role: data.role,
+      name: data.name || null,
       startDate: new Date(data.startDate),
       plannedEndDate: new Date(data.plannedEndDate),
       userId: userId, // Link to user

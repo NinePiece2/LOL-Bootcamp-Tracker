@@ -780,17 +780,17 @@ function BootcamperCard({ bootcamper, onAdd, isSelected, canAdd }: { bootcamper:
     return `https://op.gg/summoners/${region}/${cleanName}`;
   };
 
-  const getDeeplolUrl = (riotId: string | null, summonerName: string, region: string) => {
-    // DeepLoL uses format: https://www.deeplol.gg/summoner/kr/gameName-tagLine
+  const getDpmlolUrl = (riotId: string | null, summonerName: string, region: string) => {
+    // DPMLoL uses format: https://www.dpm.lol/gameName%20-tag
     let nameWithTag = summonerName;
     
     if (riotId && riotId.includes('#')) {
       const [gameName, tag] = riotId.split('#');
-      nameWithTag = `${gameName}-${tag}`;
+      nameWithTag = `${gameName} -${tag}`;
     }
     
-    const cleanName = encodeURIComponent(nameWithTag.replace(/\s+/g, ''));
-    return `https://www.deeplol.gg/summoner/${region}/${cleanName}`;
+    const cleanName = encodeURIComponent(nameWithTag);
+    return `https://dpm.lol/${cleanName}`;
   };
 
 
@@ -829,14 +829,14 @@ function BootcamperCard({ bootcamper, onAdd, isSelected, canAdd }: { bootcamper:
                 </svg>
               </a>
               <a
-                href={getDeeplolUrl(bootcamper.riotId, bootcamper.summonerName, bootcamper.region)}
+                href={getDpmlolUrl(bootcamper.riotId, bootcamper.summonerName, bootcamper.region)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:opacity-80 transition-opacity"
-                title="View on DeepLoL"
+                title="View on DPMLoL"
               >
                 <svg className="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor">
-                  <text x="1" y="18" fontSize="14" fontWeight="bold" fontFamily="Arial">DL</text>
+                  <text x="-1" y="18" fontSize="11" fontWeight="bold" fontFamily="Arial">DPM</text>
                 </svg>
               </a>
             </div>

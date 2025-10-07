@@ -20,6 +20,7 @@ interface RankData {
 interface LeaderboardEntry {
   id: string;
   summonerName: string;
+  name?: string | null;
   riotId?: string | null;
   region: string;
   role?: string | null;
@@ -147,7 +148,7 @@ export default function LeaderboardPage() {
     return (
       <div className="flex items-center gap-3">
         <div className="flex flex-col">
-          <span className="font-medium text-lg">{props.summonerName}</span>
+          <span className="font-medium text-lg">{props.name || props.summonerName}</span>
           {props.riotId && (
             <span className="text-xs text-gray-500">{props.riotId}</span>
           )}

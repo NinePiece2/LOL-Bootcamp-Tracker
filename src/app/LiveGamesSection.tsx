@@ -74,17 +74,17 @@ const getOpGgUrl = (riotId: string | null | undefined, summonerName: string | nu
   return `https://op.gg/summoners/${region}/${cleanName}`;
 };
 
-const getDeeplolUrl = (riotId: string | null | undefined, summonerName: string | null | undefined, region: string = 'kr') => {
+const getDpmlolUrl = (riotId: string | null | undefined, summonerName: string | null | undefined, region: string = 'kr') => {
   const displayName = riotId || summonerName || '';
   let nameWithTag = displayName;
   
   if (riotId && riotId.includes('#')) {
     const [gameName, tag] = riotId.split('#');
-    nameWithTag = `${gameName}-${tag}`;
+    nameWithTag = `${gameName} -${tag}`;
   }
   
-  const cleanName = encodeURIComponent(nameWithTag.replace(/\s+/g, ''));
-  return `https://www.deeplol.gg/summoner/${region}/${cleanName}`;
+  const cleanName = encodeURIComponent(nameWithTag);
+  return `https://www.dpm.lol/${cleanName}`;
 };
 
 const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({ 
@@ -347,15 +347,15 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                                       </svg>
                                     </a>
                                     <a
-                                      href={getDeeplolUrl(p.riotId, p.summonerName || p.riotIdGameName)}
+                                      href={getDpmlolUrl(p.riotId, p.summonerName || p.riotIdGameName)}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="hover:opacity-80 transition-opacity"
-                                      title="View on DeepLoL"
+                                      title="View on DPMLoL"
                                       onClick={(e) => e.stopPropagation()}
                                     >
                                       <svg className="w-3 h-3 text-purple-400" viewBox="0 0 24 24" fill="currentColor">
-                                        <text x="0" y="18" fontSize="13" fontWeight="bold" fontFamily="Arial">DL</text>
+                                        <text x="-1" y="18" fontSize="11" fontWeight="bold" fontFamily="Arial">DPM</text>
                                       </svg>
                                     </a>
                                   </div>

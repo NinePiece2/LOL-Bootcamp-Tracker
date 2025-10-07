@@ -8,6 +8,7 @@ type BootcamperWithGames = {
   id: string;
   riotId: string | null;
   summonerName: string;
+  name: string | null;
   summonerId: string | null;
   puuid: string | null;
   region: string;
@@ -77,6 +78,7 @@ export async function GET(request: NextRequest) {
             return {
               id: bootcamper.id,
               summonerName: bootcamper.summonerName,
+              name: bootcamper.name || null,
               riotId: bootcamper.riotId,
               region: bootcamper.region,
               role: bootcamper.role,
@@ -126,6 +128,7 @@ export async function GET(request: NextRequest) {
           return {
             id: bootcamper.id,
             summonerName: bootcamper.summonerName,
+            name: bootcamper.name || null,
             riotId: bootcamper.riotId,
             region: bootcamper.region,
             role: bootcamper.role,
@@ -176,6 +179,7 @@ export async function GET(request: NextRequest) {
           return {
             id: bootcamper.id,
             summonerName: bootcamper.summonerName,
+            name: bootcamper.name || null,
             riotId: bootcamper.riotId,
             region: bootcamper.region,
             role: bootcamper.role,
