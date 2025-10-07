@@ -129,6 +129,11 @@
   border-radius: 8px !important;
 }
 
+.e-toolbar input::placeholder {
+  color: #ffffff !important;
+  opacity: 0.6 !important;
+}
+
 .e-icons {
   color: #ffffff !important;
 }
@@ -157,7 +162,8 @@
 }
 
 .e-grid .e-filterbarcell input::placeholder {
-  color: #666666 !important;
+  color: #ffffff !important;
+  opacity: 0.6 !important;
 }
 
 /* Center all grid cell content */
