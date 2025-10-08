@@ -576,10 +576,26 @@ async function checkAndUpdatePeakRank(data: RankJobData) {
       });
     }
   } catch (error) {
-    // Silently handle 404s (unranked players)
-    if (!(error instanceof Error && error.message.includes('404'))) {
-      console.error(`Error checking rank for ${bootcamper.summonerName}:`, error);
+    // Better error handling with context
+    if (error instanceof Error) {
+      if (error.message.includes('404')) {
+        // Player is unranked - don't log as error
+        console.log(`ℹ️  ${bootcamper.summonerName} is unranked (404 from Riot API)`);
+      } else if (error.message.includes('429')) {
+        console.warn(`⏳ Rate limited while checking peak rank for ${bootcamper.summonerName}, will retry later`);
+      } else if (error.message.includes('500') || error.message.includes('503')) {
+        console.warn(`⚠️  Riot API error (${error.message.match(/\d{3}/)?.[0]}) while checking peak rank for ${bootcamper.summonerName}, will retry later`);
+      } else {
+        console.error(`❌ Error checking peak rank for ${bootcamper.summonerName}:`, {
+          error: error.message,
+          bootcamperId,
+          region,
+        });
+      }
+    } else {
+      console.error(`❌ Unknown error checking peak rank for ${bootcamper.summonerName}:`, error);
     }
+    // Don't throw - allow worker to continue processing other jobs
   }
 }
 
@@ -630,11 +646,18 @@ async function updateCurrentRank(data: RankJobData) {
       updates.currentSoloWins = soloQueue.wins;
       updates.currentSoloLosses = soloQueue.losses;
     } else {
-      updates.currentSoloTier = null;
-      updates.currentSoloRank = null;
-      updates.currentSoloLP = null;
-      updates.currentSoloWins = null;
-      updates.currentSoloLosses = null;
+      // Only clear rank if player was previously unranked or this is initial fetch
+      // Don't overwrite existing rank data with null on API failures
+      if (!bootcamper.currentSoloTier || !bootcamper.rankUpdatedAt) {
+        updates.currentSoloTier = null;
+        updates.currentSoloRank = null;
+        updates.currentSoloLP = null;
+        updates.currentSoloWins = null;
+        updates.currentSoloLosses = null;
+      } else {
+        // Player had rank before but now unranked - only update if this is confirmed unranked (not API error)
+        console.log(`ℹ️  ${bootcamper.summonerName} appears unranked in Solo Queue (was ${bootcamper.currentSoloTier} ${bootcamper.currentSoloRank})`);
+      }
     }
 
     // Update Flex Queue data
@@ -645,11 +668,16 @@ async function updateCurrentRank(data: RankJobData) {
       updates.currentFlexWins = flexQueue.wins;
       updates.currentFlexLosses = flexQueue.losses;
     } else {
-      updates.currentFlexTier = null;
-      updates.currentFlexRank = null;
-      updates.currentFlexLP = null;
-      updates.currentFlexWins = null;
-      updates.currentFlexLosses = null;
+      // Only clear rank if player was previously unranked or this is initial fetch
+      if (!bootcamper.currentFlexTier || !bootcamper.rankUpdatedAt) {
+        updates.currentFlexTier = null;
+        updates.currentFlexRank = null;
+        updates.currentFlexLP = null;
+        updates.currentFlexWins = null;
+        updates.currentFlexLosses = null;
+      } else {
+        console.log(`ℹ️  ${bootcamper.summonerName} appears unranked in Flex Queue (was ${bootcamper.currentFlexTier} ${bootcamper.currentFlexRank})`);
+      }
     }
 
     // Update database
@@ -660,10 +688,47 @@ async function updateCurrentRank(data: RankJobData) {
 
     console.log(`✅ Updated current rank for ${bootcamper.summonerName}`);
   } catch (error) {
-    // Silently handle 404s (unranked players)
-    if (!(error instanceof Error && error.message.includes('404'))) {
-      console.error(`Error updating current rank for ${bootcamper.summonerName}:`, error);
+    // Better error handling - don't overwrite existing rank data on API errors
+    if (error instanceof Error) {
+      if (error.message.includes('404')) {
+        // Player is unranked - only update to null if they were previously unranked
+        if (!bootcamper.currentSoloTier && !bootcamper.currentFlexTier) {
+          console.log(`ℹ️  ${bootcamper.summonerName} confirmed unranked (404 from Riot API)`);
+          await prisma.bootcamper.update({
+            where: { id: bootcamperId },
+            data: {
+              currentSoloTier: null,
+              currentSoloRank: null,
+              currentSoloLP: null,
+              currentSoloWins: null,
+              currentSoloLosses: null,
+              currentFlexTier: null,
+              currentFlexRank: null,
+              currentFlexLP: null,
+              currentFlexWins: null,
+              currentFlexLosses: null,
+              rankUpdatedAt: new Date(),
+            },
+          });
+        } else {
+          console.log(`ℹ️  ${bootcamper.summonerName} returned 404 but has existing rank data - keeping existing data`);
+        }
+      } else if (error.message.includes('429')) {
+        console.warn(`⏳ Rate limited while updating current rank for ${bootcamper.summonerName}, will retry later`);
+      } else if (error.message.includes('500') || error.message.includes('503')) {
+        console.warn(`⚠️  Riot API error (${error.message.match(/\d{3}/)?.[0]}) while updating current rank for ${bootcamper.summonerName}, keeping existing data`);
+      } else {
+        console.error(`❌ Error updating current rank for ${bootcamper.summonerName}:`, {
+          error: error.message,
+          bootcamperId,
+          region,
+          hadPreviousRank: !!(bootcamper.currentSoloTier || bootcamper.currentFlexTier),
+        });
+      }
+    } else {
+      console.error(`❌ Unknown error updating current rank for ${bootcamper.summonerName}:`, error);
     }
+    // Don't throw - allow worker to continue processing other jobs
   }
 }
 
@@ -808,6 +873,63 @@ export async function scheduleSummonerNameChecks() {
           every: 3600000, // Check every hour
         },
         jobId: `summoner-name-${bootcamper.id}`, // Unique job ID to avoid duplicates
+      }
+    );
+  }
+}
+
+/**
+ * Schedule periodic rank checks for all bootcampers (every 5 minutes)
+ */
+export async function schedulePeriodicRankChecks() {
+  if (!rankQueue) {
+    throw new Error('Workers not initialized. Call initializeWorkers() first.');
+  }
+
+  const bootcampers = await prisma.bootcamper.findMany({
+    where: {
+      // Check all bootcampers with PUUID
+      puuid: { not: '' },
+      startDate: { lte: new Date() },
+      OR: [
+        { plannedEndDate: { gte: new Date() } },
+        { actualEndDate: { gte: new Date() } },
+      ],
+    },
+  });
+
+  console.log(`Scheduling periodic rank checks for ${bootcampers.length} bootcampers`);
+
+  for (const bootcamper of bootcampers) {
+    // Schedule current rank update
+    await rankQueue.add(
+      'update-current-rank',
+      {
+        bootcamperId: bootcamper.id,
+        puuid: bootcamper.puuid,
+        region: bootcamper.region as RiotRegion,
+      },
+      {
+        repeat: {
+          every: 300000, // Check every 5 minutes
+        },
+        jobId: `periodic-current-rank-${bootcamper.id}`, // Unique job ID to avoid duplicates
+      }
+    );
+
+    // Schedule peak rank check
+    await rankQueue.add(
+      'check-rank-after-game',
+      {
+        bootcamperId: bootcamper.id,
+        puuid: bootcamper.puuid,
+        region: bootcamper.region as RiotRegion,
+      },
+      {
+        repeat: {
+          every: 300000, // Check every 5 minutes
+        },
+        jobId: `periodic-peak-rank-${bootcamper.id}`, // Unique job ID to avoid duplicates
       }
     );
   }
@@ -1037,7 +1159,8 @@ export async function initializeWorkers() {
   // Schedule summoner name checks (runs every hour)
   await scheduleSummonerNameChecks();
 
-  // Note: Rank checks are triggered when a game ends or when a bootcamper is added
+  // Schedule periodic rank checks (runs every 5 minutes)
+  await schedulePeriodicRankChecks();
   
   console.log('Worker system initialized successfully');
   
@@ -1079,6 +1202,13 @@ function startStatusLogger() {
         const active = await summonerNameQueue.getActive();
         const delayed = await summonerNameQueue.getDelayed();
         console.log(`   Summoner Name Queue: ${waiting.length} waiting, ${active.length} active, ${delayed.length} delayed`);
+      }
+      
+      if (rankQueue) {
+        const waiting = await rankQueue.getWaiting();
+        const active = await rankQueue.getActive();
+        const delayed = await rankQueue.getDelayed();
+        console.log(`   Rank Queue: ${waiting.length} waiting, ${active.length} active, ${delayed.length} delayed`);
       }
       
       // Check bootcamper count

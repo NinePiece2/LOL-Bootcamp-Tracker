@@ -548,12 +548,6 @@ export default function LeaderboardPage() {
                 </span>
               </div>
             )}
-            
-            {/* Refined separator */}
-            <div 
-              className="absolute top-0.5 bottom-0.5 w-[1.5px] bg-gradient-to-b from-white/60 via-white/80 to-white/60 shadow-[0_0_8px_rgba(255,255,255,0.4)]"
-              style={{ left: `${winPercentage}%` }}
-            ></div>
           </div>
           
           {/* W/L Record with improved visual hierarchy */}
