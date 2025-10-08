@@ -7,10 +7,10 @@ on:
     paths:
       - src/**
       - public/**
-      - Dockerfile
+      - docker/Dockerfile
       - package.json
       - package-lock.json
-      - Dockerfile.migrate
+      - docker/Dockerfile.migrate
   workflow_dispatch:
 
 jobs:
@@ -35,6 +35,6 @@ jobs:
           uses: docker/build-push-action@v6
           with:
             context: ./
-            file: ./Dockerfile.migrate
+            file: ./docker/Dockerfile.migrate
             push: true
             tags: ${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker:migrate
