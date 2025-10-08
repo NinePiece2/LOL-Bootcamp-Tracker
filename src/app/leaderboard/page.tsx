@@ -7,6 +7,7 @@ import { GridComponent, ColumnsDirective, ColumnDirective, Page, Filter, Sort, T
 import { Badge } from '@/components/ui/badge';
 import { Trophy, TrendingUp, Target } from 'lucide-react';
 import { ListSwitcher } from '@/components/list-switcher';
+import { GameProfileLinks } from '@/components/game-profile-links';
 
 interface RankData {
   tier: string;
@@ -26,6 +27,8 @@ interface LeaderboardEntry {
   role?: string | null;
   gamesPlayed: number;
   status: string;
+  twitchLogin?: string | null;
+  twitchProfileImage?: string | null;
   soloQueue: RankData | null;
   flexQueue: RankData | null;
   peakRank: RankData | null;
@@ -165,17 +168,130 @@ export default function LeaderboardPage() {
     // Find the actual position in the bootcampers array
     const position = bootcampers.findIndex(b => b.id === props.id) + 1;
     
-    const positionColors: Record<number, string> = {
-      1: 'bg-gradient-to-br from-yellow-400 to-yellow-600 text-white',
-      2: 'bg-gradient-to-br from-gray-300 to-gray-500 text-white',
-      3: 'bg-gradient-to-br from-amber-600 to-amber-800 text-white',
-    };
+    // Top 3 medal designs
+    if (position === 1) {
+      return (
+        <div className="flex items-center justify-center">
+          <div className="relative group">
+            {/* Gold Medal SVG */}
+            <svg width="56" height="56" viewBox="0 0 56 56" className="drop-shadow-2xl transform group-hover:scale-110 transition-transform duration-200">
+              {/* Medal circle */}
+              <circle cx="28" cy="32" r="20" fill="url(#goldGradient)" stroke="#B8860B" strokeWidth="2"/>
+              <circle cx="28" cy="32" r="16" fill="url(#goldInner)" opacity="0.9"/>
+              
+              {/* Star in center */}
+              <path d="M28 22l2.5 7.5h8l-6.5 5 2.5 7.5-6.5-5-6.5 5 2.5-7.5-6.5-5h8z" fill="#FFD700" stroke="#B8860B" strokeWidth="1"/>
+              
+              {/* Ribbon */}
+              <path d="M18 12 L18 28 L23 24 L28 28 L33 24 L38 28 L38 12 Z" fill="#C9A500" stroke="#B8860B" strokeWidth="1.5"/>
+              <path d="M18 12 L38 12 L38 20 L18 20 Z" fill="#FFD700"/>
+              
+              {/* Number */}
+              <text x="28" y="36" textAnchor="middle" fill="#FFFFFF" fontSize="14" fontWeight="bold" fontFamily="Arial">1</text>
+              
+              {/* Gradients */}
+              <defs>
+                <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#FFD700"/>
+                  <stop offset="50%" stopColor="#FFA500"/>
+                  <stop offset="100%" stopColor="#DAA520"/>
+                </linearGradient>
+                <radialGradient id="goldInner">
+                  <stop offset="0%" stopColor="#FFED4E"/>
+                  <stop offset="100%" stopColor="#FFD700"/>
+                </radialGradient>
+              </defs>
+            </svg>
+            {/* Glow effect */}
+            <div className="absolute inset-0 bg-yellow-400/20 rounded-full blur-xl -z-10 group-hover:bg-yellow-400/30 transition-all"></div>
+          </div>
+        </div>
+      );
+    }
     
-    const bgClass = positionColors[position] || 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300';
+    if (position === 2) {
+      return (
+        <div className="flex items-center justify-center">
+          <div className="relative group">
+            {/* Silver Medal SVG */}
+            <svg width="52" height="52" viewBox="0 0 52 52" className="drop-shadow-xl transform group-hover:scale-110 transition-transform duration-200">
+              {/* Medal circle */}
+              <circle cx="26" cy="30" r="18" fill="url(#silverGradient)" stroke="#999999" strokeWidth="2"/>
+              <circle cx="26" cy="30" r="14" fill="url(#silverInner)" opacity="0.9"/>
+              
+              {/* Star in center */}
+              <path d="M26 21l2 6h6.5l-5 4 2 6.5-5.5-4-5.5 4 2-6.5-5-4h6.5z" fill="#E8E8E8" stroke="#999999" strokeWidth="1"/>
+              
+              {/* Ribbon */}
+              <path d="M17 10 L17 26 L21 23 L26 26 L31 23 L35 26 L35 10 Z" fill="#B0B0B0" stroke="#999999" strokeWidth="1.5"/>
+              <path d="M17 10 L35 10 L35 18 L17 18 Z" fill="#D3D3D3"/>
+              
+              {/* Number */}
+              <text x="26" y="34" textAnchor="middle" fill="#FFFFFF" fontSize="13" fontWeight="bold" fontFamily="Arial">2</text>
+              
+              {/* Gradients */}
+              <defs>
+                <linearGradient id="silverGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#E8E8E8"/>
+                  <stop offset="50%" stopColor="#C0C0C0"/>
+                  <stop offset="100%" stopColor="#A8A8A8"/>
+                </linearGradient>
+                <radialGradient id="silverInner">
+                  <stop offset="0%" stopColor="#F5F5F5"/>
+                  <stop offset="100%" stopColor="#D3D3D3"/>
+                </radialGradient>
+              </defs>
+            </svg>
+            {/* Glow effect */}
+            <div className="absolute inset-0 bg-gray-300/20 rounded-full blur-xl -z-10 group-hover:bg-gray-300/30 transition-all"></div>
+          </div>
+        </div>
+      );
+    }
+    
+    if (position === 3) {
+      return (
+        <div className="flex items-center justify-center">
+          <div className="relative group">
+            {/* Bronze Medal SVG */}
+            <svg width="52" height="52" viewBox="0 0 52 52" className="drop-shadow-xl transform group-hover:scale-110 transition-transform duration-200">
+              {/* Medal circle */}
+              <circle cx="26" cy="30" r="18" fill="url(#bronzeGradient)" stroke="#8B4513" strokeWidth="2"/>
+              <circle cx="26" cy="30" r="14" fill="url(#bronzeInner)" opacity="0.9"/>
+              
+              {/* Star in center */}
+              <path d="M26 21l2 6h6.5l-5 4 2 6.5-5.5-4-5.5 4 2-6.5-5-4h6.5z" fill="#DAA520" stroke="#8B4513" strokeWidth="1"/>
+              
+              {/* Ribbon */}
+              <path d="M17 10 L17 26 L21 23 L26 26 L31 23 L35 26 L35 10 Z" fill="#A0522D" stroke="#8B4513" strokeWidth="1.5"/>
+              <path d="M17 10 L35 10 L35 18 L17 18 Z" fill="#CD7F32"/>
+              
+              {/* Number */}
+              <text x="26" y="34" textAnchor="middle" fill="#FFFFFF" fontSize="13" fontWeight="bold" fontFamily="Arial">3</text>
+              
+              {/* Gradients */}
+              <defs>
+                <linearGradient id="bronzeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#CD7F32"/>
+                  <stop offset="50%" stopColor="#B8733F"/>
+                  <stop offset="100%" stopColor="#8B4513"/>
+                </linearGradient>
+                <radialGradient id="bronzeInner">
+                  <stop offset="0%" stopColor="#E39650"/>
+                  <stop offset="100%" stopColor="#CD7F32"/>
+                </radialGradient>
+              </defs>
+            </svg>
+            {/* Glow effect */}
+            <div className="absolute inset-0 bg-orange-600/20 rounded-full blur-xl -z-10 group-hover:bg-orange-600/30 transition-all"></div>
+          </div>
+        </div>
+      );
+    }
     
     return (
       <div className="flex items-center justify-center">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${bgClass}`}>
+        <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
           {position}
         </div>
       </div>
@@ -183,31 +299,66 @@ export default function LeaderboardPage() {
   };
 
   const summonerTemplate = (props: LeaderboardEntry) => {
+    const roleColors: Record<string, string> = {
+      pro: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+      streamer: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+      rookie: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    };
+    
+    const twitchUrl = props.twitchLogin ? `https://www.twitch.tv/${props.twitchLogin}` : null;
+    
     return (
       <div className="flex items-center gap-3 justify-center">
+        {/* Twitch Profile Picture */}
+        {twitchUrl && props.twitchProfileImage ? (
+          <a 
+            href={twitchUrl} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex-shrink-0 hover:opacity-80 transition-opacity"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img 
+              src={`data:image/jpeg;base64,${props.twitchProfileImage}`}
+              alt={`${props.name || props.summonerName} profile`}
+              className="w-12 h-12 rounded-full object-cover ring-2 ring-purple-500/30"
+            />
+          </a>
+        ) : twitchUrl ? (
+          <a 
+            href={twitchUrl} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex-shrink-0 hover:opacity-80 transition-opacity"
+          >
+            <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center ring-2 ring-purple-500/30">
+              <span className="text-purple-400 text-xs font-bold">
+                {(props.name || props.summonerName).charAt(0).toUpperCase()}
+              </span>
+            </div>
+          </a>
+        ) : (
+          <div className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center ring-2 ring-gray-600">
+            <span className="text-gray-400 text-xs font-bold">
+              {(props.name || props.summonerName).charAt(0).toUpperCase()}
+            </span>
+          </div>
+        )}
+        
         <div className="flex flex-col">
-          <span className="font-medium text-lg">{props.name || props.summonerName}</span>
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-lg">{props.name || props.summonerName}</span>
+            {props.role && (
+              <span className={`text-xs px-2 py-0.5 rounded-full border ${roleColors[props.role] || ''}`}>
+                {props.role.charAt(0).toUpperCase() + props.role.slice(1)}
+              </span>
+            )}
+          </div>
           {props.riotId && (
             <span className="text-xs text-gray-500">{props.riotId}</span>
           )}
         </div>
       </div>
-    );
-  };
-
-  const roleTemplate = (props: LeaderboardEntry) => {
-    if (!props.role) return <span className="text-gray-400">—</span>;
-    
-    const roleColors: Record<string, string> = {
-      pro: 'bg-yellow-500',
-      streamer: 'bg-purple-500',
-      rookie: 'bg-blue-500',
-    };
-    
-    return (
-      <Badge className={roleColors[props.role] || ''}>
-        {props.role.charAt(0).toUpperCase() + props.role.slice(1)}
-      </Badge>
     );
   };
 
@@ -315,16 +466,109 @@ export default function LeaderboardPage() {
     if (!rank) return <span className="text-gray-400">—</span>;
     
     const winRate = rank.winRate;
-    const color = winRate >= 60 ? 'text-green-600' : winRate >= 50 ? 'text-yellow-600' : 'text-red-600';
+    const totalGames = rank.wins + rank.losses;
+    const winPercentage = (rank.wins / totalGames) * 100;
+    const lossPercentage = (rank.losses / totalGames) * 100;
+    
+    // Professional color gradients based on win rate tiers
+    const getWinRateColors = () => {
+      if (winRate >= 60) {
+        return {
+          gradient: 'from-emerald-500 via-emerald-400 to-emerald-500',
+          text: 'text-emerald-400',
+          bgGlow: 'bg-emerald-500/5',
+          glow: 'shadow-[0_0_12px_rgba(16,185,129,0.2)]',
+          ring: 'ring-1 ring-emerald-500/30',
+        };
+      } else if (winRate >= 50) {
+        return {
+          gradient: 'from-blue-500 via-blue-400 to-blue-500',
+          text: 'text-blue-400',
+          bgGlow: 'bg-blue-500/5',
+          glow: 'shadow-[0_0_12px_rgba(59,130,246,0.2)]',
+          ring: 'ring-1 ring-blue-500/30',
+        };
+      } else {
+        return {
+          gradient: 'from-slate-500 via-slate-400 to-slate-500',
+          text: 'text-slate-400',
+          bgGlow: 'bg-slate-500/5',
+          glow: 'shadow-[0_0_10px_rgba(100,116,139,0.15)]',
+          ring: 'ring-1 ring-slate-500/30',
+        };
+      }
+    };
+    
+    const colors = getWinRateColors();
     
     return (
-      <div className="flex items-center gap-2 justify-center">
-        <span className={`font-semibold ${color}`}>
-          {winRate.toFixed(1)}%
-        </span>
-        <span className="text-gray-500 text-sm">
-          ({rank.wins}W {rank.losses}L)
-        </span>
+      <div className={`flex items-center gap-4 w-full px-3 py-2 rounded-lg ${colors.bgGlow} transition-all duration-300 hover:scale-[1.02]`}>
+        {/* Win rate percentage with enhanced styling */}
+        <div className="flex flex-col items-center gap-0.5 min-w-[60px]">
+          <span className={`text-xl font-bold ${colors.text} tabular-nums tracking-tight leading-none`}>
+            {winRate.toFixed(1)}%
+          </span>
+          <span className="text-[9px] text-gray-500 font-medium uppercase tracking-wide">{totalGames} Games</span>
+        </div>
+        
+        {/* Professional progress bar */}
+        <div className="flex-1 max-w-[190px] space-y-1.5">
+          {/* Bar container with improved depth */}
+          <div className={`relative h-7 bg-gradient-to-br from-gray-900/80 via-gray-800/60 to-gray-900/80 rounded-lg overflow-hidden border border-gray-700/50 ${colors.glow} ${colors.ring}`}>
+            {/* Loss background with subtle gradient */}
+            <div className="absolute inset-0 bg-gradient-to-r from-red-600/45 via-red-600/35 to-red-600/25"></div>
+            
+            {/* Win section with polished gradient */}
+            <div 
+              className={`relative h-full bg-gradient-to-r ${colors.gradient} transition-all duration-700 ease-out`}
+              style={{ width: `${winPercentage}%` }}
+            >
+              {/* Multi-layer shine effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent animate-shimmer"></div>
+              <div className="absolute inset-0 bg-gradient-to-b from-white/15 via-transparent to-black/10"></div>
+              
+              {/* Win count with better readability */}
+              {winPercentage > 20 && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xs font-black text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] tracking-tight">
+                    {rank.wins}
+                  </span>
+                </div>
+              )}
+            </div>
+            
+            {/* Loss count with improved positioning */}
+            {lossPercentage > 20 && (
+              <div 
+                className="absolute inset-0 flex items-center justify-center"
+                style={{ left: `${winPercentage}%` }}
+              >
+                <span className="text-xs font-black text-white/95 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] tracking-tight">
+                  {rank.losses}
+                </span>
+              </div>
+            )}
+            
+            {/* Refined separator */}
+            <div 
+              className="absolute top-0.5 bottom-0.5 w-[1.5px] bg-gradient-to-b from-white/60 via-white/80 to-white/60 shadow-[0_0_8px_rgba(255,255,255,0.4)]"
+              style={{ left: `${winPercentage}%` }}
+            ></div>
+          </div>
+          
+          {/* W/L Record with improved visual hierarchy */}
+          <div className="flex items-center justify-center gap-2.5 text-[10px] font-bold">
+            <div className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]"></div>
+              <span className="text-emerald-400/90">{rank.wins}W</span>
+            </div>
+            <div className="w-[3px] h-[3px] rounded-full bg-gray-600"></div>
+            <div className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]"></div>
+              <span className="text-red-400/90">{rank.losses}L</span>
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
@@ -339,6 +583,19 @@ export default function LeaderboardPage() {
         ) : (
           <Badge variant="secondary">Idle</Badge>
         )}
+      </div>
+    );
+  };
+
+  const linksTemplate = (props: LeaderboardEntry) => {
+    return (
+      <div className="flex justify-center">
+        <GameProfileLinks 
+          riotId={props.riotId || null}
+          summonerName={props.summonerName}
+          region={props.region}
+          size="md"
+        />
       </div>
     );
   };
@@ -457,16 +714,9 @@ export default function LeaderboardPage() {
             <ColumnDirective
               field="summonerName"
               headerText="Player"
-              width="250"
+              width="200"
               textAlign="Center"
               template={summonerTemplate}
-            />
-            <ColumnDirective
-              field="role"
-              headerText="Role"
-              width="120"
-              textAlign="Center"
-              template={roleTemplate}
             />
             <ColumnDirective
               field="soloQueue"
@@ -478,23 +728,30 @@ export default function LeaderboardPage() {
             <ColumnDirective
               field="peakRank"
               headerText="Peak Rank"
-              width="180"
+              width="160"
               textAlign="Center"
               template={peakRankTemplate}
             />
             <ColumnDirective
               field="soloQueue.winRate"
               headerText="Win Rate"
-              width="200"
+              width="220"
               textAlign="Center"
               template={winRateTemplate}
             />
             <ColumnDirective
               field="status"
               headerText="Status"
-              width="120"
+              width="100"
               textAlign="Center"
               template={statusTemplate}
+            />
+            <ColumnDirective
+              headerText="Links"
+              width="100"
+              textAlign="Center"
+              template={linksTemplate}
+              allowSorting={false}
             />
           </ColumnsDirective>
           <Inject services={[Page, Filter, Sort, Toolbar]} />

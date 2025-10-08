@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Modal } from '@/components/ui/modal';
 import LiveGamesSection from './LiveGamesSection';
 import { ListSwitcher } from '@/components/list-switcher';
+import { GameProfileLinks } from '@/components/game-profile-links';
 import { Eye, EyeOff, GripVertical, X } from 'lucide-react';
 
 interface Bootcamper {
@@ -118,9 +119,6 @@ export default function Home() {
   }, [currentList]);
 
   // Listen for changes from other tabs/windows
-  // NOTE: this effect intentionally has an empty dependency list and must not depend
-  // on functions defined later in the file. Disable exhaustive-deps lint for this effect.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -1256,33 +1254,6 @@ function BootcamperCard({ bootcamper, onAdd, isSelected, canAdd }: { bootcamper:
     bootcamper.twitchStreams.length > 0 &&
     bootcamper.twitchStreams[0].live;
 
-  const getOpGgUrl = (summonerName: string, region: string, riotId: string | null) => {
-    let nameWithTag = summonerName;
-    
-    // If riotId exists and contains a tag, append it to the name
-    if (riotId && riotId.includes('#')) {
-      const [gameName, tag] = riotId.split('#');
-      nameWithTag = `${gameName}-${tag}`;
-    }
-    
-    const cleanName = encodeURIComponent(nameWithTag.replace(/\s+/g, ''));
-    return `https://op.gg/summoners/${region}/${cleanName}`;
-  };
-
-  const getDpmlolUrl = (riotId: string | null, summonerName: string) => {
-    // DPMLoL uses format: https://www.dpm.lol/gameName%20-tag
-    let nameWithTag = summonerName;
-    
-    if (riotId && riotId.includes('#')) {
-      const [gameName, tag] = riotId.split('#');
-      nameWithTag = `${gameName} -${tag}`;
-    }
-    
-    const cleanName = encodeURIComponent(nameWithTag);
-    return `https://dpm.lol/${cleanName}`;
-  };
-
-
   const handleDragStartLocal = (e: React.DragEvent) => {
     if (!isStreaming) return;
     try {
@@ -1311,30 +1282,13 @@ function BootcamperCard({ bootcamper, onAdd, isSelected, canAdd }: { bootcamper:
             <h3 className="font-medium text-white truncate">
               {bootcamper.name || bootcamper.summonerName}
             </h3>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <a
-                href={getOpGgUrl(bootcamper.summonerName, bootcamper.region, bootcamper.riotId)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:opacity-80 transition-opacity"
-                title="View on OP.GG"
-              >
-                <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
-                  <text x="2" y="18" fontSize="16" fontWeight="bold" fontFamily="Arial">OP</text>
-                </svg>
-              </a>
-              <a
-                href={getDpmlolUrl(bootcamper.riotId, bootcamper.summonerName)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:opacity-80 transition-opacity"
-                title="View on DPMLoL"
-              >
-                <svg className="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor">
-                  <text x="-1" y="18" fontSize="11" fontWeight="bold" fontFamily="Arial">DPM</text>
-                </svg>
-              </a>
-            </div>
+            <GameProfileLinks 
+              riotId={bootcamper.riotId}
+              summonerName={bootcamper.summonerName}
+              region={bootcamper.region}
+              size="sm"
+              className="flex-shrink-0"
+            />
           </div>
           {bootcamper.name && (
             <p className="text-xs text-gray-500">

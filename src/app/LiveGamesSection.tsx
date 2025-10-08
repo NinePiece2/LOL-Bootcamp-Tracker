@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { getChampionNameById } from "@/lib/utils";
 import { identifyRoles } from "@/lib/role-identification";
+import { GameProfileLinks } from "@/components/game-profile-links";
 
 interface Participant {
   puuid: string;
@@ -59,32 +60,6 @@ const getRankIconUrl = (tier: string | null | undefined) => {
   if (!tier) return null;
   const tierLower = tier.toLowerCase();
   return `/rank-images/${tierLower}.png`;
-};
-
-const getOpGgUrl = (riotId: string | null | undefined, summonerName: string | null | undefined, region: string = 'kr') => {
-  const displayName = riotId || summonerName || '';
-  let nameWithTag = displayName;
-  
-  if (riotId && riotId.includes('#')) {
-    const [gameName, tag] = riotId.split('#');
-    nameWithTag = `${gameName}-${tag}`;
-  }
-  
-  const cleanName = encodeURIComponent(nameWithTag.replace(/\s+/g, ''));
-  return `https://op.gg/summoners/${region}/${cleanName}`;
-};
-
-const getDpmlolUrl = (riotId: string | null | undefined, summonerName: string | null | undefined, region: string = 'kr') => {
-  const displayName = riotId || summonerName || '';
-  let nameWithTag = displayName;
-  
-  if (riotId && riotId.includes('#')) {
-    const [gameName, tag] = riotId.split('#');
-    nameWithTag = `${gameName} -${tag}`;
-  }
-  
-  const cleanName = encodeURIComponent(nameWithTag);
-  return `https://dpm.lol/${cleanName}`;
 };
 
 const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({ 
@@ -236,9 +211,16 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
               className="p-3 bg-gray-900/50 rounded-lg border border-gray-800 hover:border-gray-700 transition-colors"
             >
               <div className="flex items-center justify-between">
-                <span className="font-medium text-white">
-                  {bootcamper.name || bootcamper.summonerName}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-white">
+                    {bootcamper.name || bootcamper.summonerName}
+                  </span>
+                  <GameProfileLinks 
+                    riotId={bootcamper.riotId || null}
+                    summonerName={bootcamper.summonerName}
+                    size="sm"
+                  />
+                </div>
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                   <span className="text-xs text-green-400 font-medium">LIVE</span>
@@ -333,32 +315,12 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                                     {roleDisplayNames[p.inferredRole || 'TOP'] || p.inferredRole || 'UNKNOWN'}
                                   </span>
                                   <span className="font-medium text-white truncate flex-1">{displayName}</span>
-                                  <div className="flex items-center gap-1 flex-shrink-0">
-                                    <a
-                                      href={getOpGgUrl(p.riotId, p.summonerName || p.riotIdGameName)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="hover:opacity-80 transition-opacity"
-                                      title="View on OP.GG"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <svg className="w-3 h-3 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
-                                        <text x="2" y="18" fontSize="16" fontWeight="bold" fontFamily="Arial">OP</text>
-                                      </svg>
-                                    </a>
-                                    <a
-                                      href={getDpmlolUrl(p.riotId, p.summonerName || p.riotIdGameName)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="hover:opacity-80 transition-opacity"
-                                      title="View on DPMLoL"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <svg className="w-3 h-3 text-purple-400" viewBox="0 0 24 24" fill="currentColor">
-                                        <text x="-1" y="18" fontSize="11" fontWeight="bold" fontFamily="Arial">DPM</text>
-                                      </svg>
-                                    </a>
-                                  </div>
+                                  <GameProfileLinks 
+                                    riotId={p.riotId || null}
+                                    summonerName={p.summonerName || p.riotIdGameName || ''}
+                                    size="sm"
+                                    className="flex-shrink-0"
+                                  />
                                   <div className="flex items-center gap-1 flex-shrink-0">
                                     {p.tier && getRankIconUrl(p.tier) && (
                                       // eslint-disable-next-line @next/next/no-img-element

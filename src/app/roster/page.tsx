@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { AddBootcamperDialog } from '@/components/add-bootcamper-dialog';
 import { EditBootcamperDialog } from '@/components/edit-bootcamper-dialog';
 import { ListSwitcher } from '@/components/list-switcher';
+import { GameProfileLinks } from '@/components/game-profile-links';
 import { format } from 'date-fns';
 import { Pencil, Trash2 } from 'lucide-react';
 
@@ -127,14 +128,22 @@ export default function RosterPage() {
 
   const summonerTemplate = (props: Bootcamper & { riotId?: string | null }) => {
     return (
-      <div className="flex flex-col justify-center">
-        <span className="font-medium">{props.name || props.summonerName}</span>
-        {props.name && (
-          <span className="text-xs text-gray-500">{props.summonerName}</span>
-        )}
-        {props.riotId && !props.name && (
-          <span className="text-xs text-gray-500">{props.riotId}</span>
-        )}
+      <div className="flex items-center gap-2 justify-center">
+        <div className="flex flex-col">
+          <span className="font-medium">{props.name || props.summonerName}</span>
+          {props.name && (
+            <span className="text-xs text-gray-500">{props.summonerName}</span>
+          )}
+          {props.riotId && !props.name && (
+            <span className="text-xs text-gray-500">{props.riotId}</span>
+          )}
+        </div>
+        <GameProfileLinks 
+          riotId={props.riotId || null}
+          summonerName={props.summonerName}
+          region={props.region}
+          size="sm"
+        />
       </div>
     );
   };

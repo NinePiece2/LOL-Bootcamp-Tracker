@@ -13,6 +13,7 @@ type BootcamperWithGames = {
   region: string;
   twitchLogin: string | null;
   twitchUserId: string | null;
+  twitchProfileImage: Uint8Array | null;
   role: string | null;
   startDate: string | Date;
   plannedEndDate: string | Date | null;
@@ -119,6 +120,8 @@ export async function GET(request: NextRequest) {
         region: bootcamper.region,
         role: bootcamper.role,
         status: bootcamper.status,
+        twitchLogin: bootcamper.twitchLogin,
+        twitchProfileImage: bootcamper.twitchProfileImage ? Buffer.from(bootcamper.twitchProfileImage).toString('base64') : null,
         gamesPlayed: bootcamper.games.length,
         soloQueue: bootcamper.currentSoloTier
           ? {

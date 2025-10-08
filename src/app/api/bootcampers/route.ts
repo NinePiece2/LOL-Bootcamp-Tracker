@@ -68,11 +68,26 @@ export async function POST(request: NextRequest) {
 
     // Fetch Twitch info if provided
     let twitchUserId: string | undefined;
+    let twitchProfileImage: Buffer | undefined;
     if (data.twitchLogin) {
       const twitchClient = getTwitchClient();
       const twitchUser = await twitchClient.getUserByLogin(data.twitchLogin);
       if (twitchUser) {
         twitchUserId = twitchUser.id;
+        
+        // Fetch and store profile image
+        if (twitchUser.profile_image_url) {
+          try {
+            const imageResponse = await fetch(twitchUser.profile_image_url);
+            if (imageResponse.ok) {
+              const arrayBuffer = await imageResponse.arrayBuffer();
+              twitchProfileImage = Buffer.from(arrayBuffer);
+              console.log('✅ Downloaded Twitch profile image');
+            }
+          } catch (error) {
+            console.error('Failed to download Twitch profile image:', error);
+          }
+        }
       }
     }
 
@@ -114,6 +129,7 @@ export async function POST(request: NextRequest) {
       region: data.region,
       twitchLogin: data.twitchLogin,
       twitchUserId,
+      twitchProfileImage,
       role: data.role,
       name: data.name || null,
       startDate: new Date(data.startDate),
