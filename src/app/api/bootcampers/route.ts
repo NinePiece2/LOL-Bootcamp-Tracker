@@ -91,6 +91,66 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Check if this bootcamper already exists in the default list
+    const existingDefaultBootcamper = await prisma.bootcamper.findFirst({
+      where: {
+        puuid: summoner.puuid,
+        isDefault: true,
+      },
+    });
+
+    if (existingDefaultBootcamper && !session.user.isAdmin) {
+      // User is trying to add someone who's already in the default list
+      // Create a reference to the default bootcamper instead (no duplicate workers)
+      console.log(`📌 Found existing default bootcamper: ${existingDefaultBootcamper.summonerName}`);
+      
+      const userReference = await prisma.bootcamper.create({
+        data: {
+          name: data.name || existingDefaultBootcamper.name,
+          summonerName: existingDefaultBootcamper.summonerName,
+          summonerId: existingDefaultBootcamper.summonerId,
+          puuid: existingDefaultBootcamper.puuid,
+          region: existingDefaultBootcamper.region,
+          riotId: existingDefaultBootcamper.riotId,
+          twitchLogin: existingDefaultBootcamper.twitchLogin,
+          twitchUserId: existingDefaultBootcamper.twitchUserId,
+          twitchProfileImage: existingDefaultBootcamper.twitchProfileImage,
+          role: data.role || existingDefaultBootcamper.role,
+          startDate: new Date(data.startDate),
+          plannedEndDate: new Date(data.plannedEndDate),
+          status: existingDefaultBootcamper.status, // Sync status with default
+          isDefault: false,
+          userId: session.user.id,
+          linkedToDefaultId: existingDefaultBootcamper.id, // Link to avoid duplicate workers
+          // Copy current rank data
+          currentSoloTier: existingDefaultBootcamper.currentSoloTier,
+          currentSoloRank: existingDefaultBootcamper.currentSoloRank,
+          currentSoloLP: existingDefaultBootcamper.currentSoloLP,
+          currentSoloWins: existingDefaultBootcamper.currentSoloWins,
+          currentSoloLosses: existingDefaultBootcamper.currentSoloLosses,
+          currentFlexTier: existingDefaultBootcamper.currentFlexTier,
+          currentFlexRank: existingDefaultBootcamper.currentFlexRank,
+          currentFlexLP: existingDefaultBootcamper.currentFlexLP,
+          currentFlexWins: existingDefaultBootcamper.currentFlexWins,
+          currentFlexLosses: existingDefaultBootcamper.currentFlexLosses,
+          rankUpdatedAt: existingDefaultBootcamper.rankUpdatedAt,
+          // Copy peak rank data
+          peakSoloTier: existingDefaultBootcamper.peakSoloTier,
+          peakSoloRank: existingDefaultBootcamper.peakSoloRank,
+          peakSoloLP: existingDefaultBootcamper.peakSoloLP,
+          peakFlexTier: existingDefaultBootcamper.peakFlexTier,
+          peakFlexRank: existingDefaultBootcamper.peakFlexRank,
+          peakFlexLP: existingDefaultBootcamper.peakFlexLP,
+          peakUpdatedAt: existingDefaultBootcamper.peakUpdatedAt,
+        },
+      });
+
+      console.log(`✅ Created user reference to default bootcamper (no duplicate workers): ${userReference.summonerName}`);
+      console.log(`   Linked ID: ${existingDefaultBootcamper.id} → User bootcamper ID: ${userReference.id}`);
+
+      return NextResponse.json(userReference, { status: 201 });
+    }
+
     // Create bootcamper in database
     // Determine if this should be a default bootcamper based on user permissions and listType
     console.log('Creating bootcamper - listType:', data.listType);

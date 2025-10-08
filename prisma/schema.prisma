@@ -92,7 +92,10 @@ model Bootcamper {
   currentFlexWins    Int?             @map("current_flex_wins")
   currentFlexLosses  Int?             @map("current_flex_losses")
   rankUpdatedAt      DateTime?        @map("rank_updated_at")
+  linkedToDefaultId  String?          @map("linked_to_default_id")
   user               User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkedToDefault    Bootcamper?      @relation("LinkedBootcampers", fields: [linkedToDefaultId], references: [id], onDelete: Cascade)
+  userReferences     Bootcamper[]     @relation("LinkedBootcampers")
   games              Game[]
   teamMembers        TeamMember[]
   twitchStreams      TwitchStream[]

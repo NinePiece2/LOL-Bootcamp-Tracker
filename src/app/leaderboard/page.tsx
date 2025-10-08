@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Trophy, TrendingUp, Target } from 'lucide-react';
 import { ListSwitcher } from '@/components/list-switcher';
 import { GameProfileLinks } from '@/components/game-profile-links';
+import { Modal } from '@/components/ui/modal';
+import LiveGamesSection from '../LiveGamesSection';
 
 interface RankData {
   tier: string;
@@ -34,10 +36,51 @@ interface LeaderboardEntry {
   peakRank: RankData | null;
 }
 
+interface GameData {
+  id: string;
+  riotGameId: string;
+  startedAt: string;
+  endedAt: string | null;
+  status: string;
+  matchData?: {
+    participants?: Array<{
+      puuid: string;
+      summonerId?: string;
+      summonerName?: string | null;
+      riotId?: string | null;
+      riotIdGameName?: string | null;
+      riotIdTagline?: string | null;
+      championId: number;
+      championName?: string | null;
+      spell1Id: number;
+      spell2Id: number;
+      teamId: number;
+      rank?: string | null;
+      tier?: string | null;
+      division?: string | null;
+      leaguePoints?: number;
+      inferredRole?: string;
+    }>;
+  };
+}
+
+interface BootcamperWithGames {
+  id: string;
+  name?: string | null;
+  summonerName: string;
+  region: string;
+  riotId: string | null;
+  puuid?: string;
+  games?: GameData[];
+}
+
 export default function LeaderboardPage() {
   const { data: session } = useSession();
   const [bootcampers, setBootcampers] = useState<LeaderboardEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showLobbyModal, setShowLobbyModal] = useState(false);
+  const [selectedBootcamper, setSelectedBootcamper] = useState<BootcamperWithGames | null>(null);
+  const [isLoadingGameData, setIsLoadingGameData] = useState(false);
   
   // Set initial list based on localStorage or user permissions
   const getInitialList = (): 'default' | 'user' => {
@@ -570,10 +613,62 @@ export default function LeaderboardPage() {
   const statusTemplate = (props: LeaderboardEntry) => {
     const isLive = props.status === 'in_game';
     
+    const handleViewGame = async () => {
+      if (!isLive) return;
+      
+      setIsLoadingGameData(true);
+      setShowLobbyModal(true);
+      
+      try {
+        // Fetch full bootcamper data with game details
+        const listType = session?.user ? currentList : 'default';
+        const response = await fetch(`/api/bootcampers?listType=${listType}`);
+        const allBootcampers: BootcamperWithGames[] = await response.json();
+        
+        // Find the specific bootcamper
+        const bootcamper = allBootcampers.find(b => b.id === props.id);
+        
+        if (bootcamper) {
+          setSelectedBootcamper(bootcamper);
+        }
+      } catch (error) {
+        console.error('Error fetching game data:', error);
+      } finally {
+        setIsLoadingGameData(false);
+      }
+    };
+    
     return (
-      <div className="flex gap-2 justify-center">
+      <div className="flex gap-2 justify-center items-center">
         {isLive ? (
-          <Badge variant="destructive">In Game</Badge>
+          <>
+            <Badge variant="destructive">In Game</Badge>
+            <button
+              onClick={handleViewGame}
+              className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors flex items-center gap-1"
+              title="View game details"
+            >
+              <svg 
+                className="w-4 h-4" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" 
+                />
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" 
+                />
+              </svg>
+            </button>
+          </>
         ) : (
           <Badge variant="secondary">Idle</Badge>
         )}
@@ -751,6 +846,34 @@ export default function LeaderboardPage() {
           <Inject services={[Page, Filter, Sort, Toolbar]} />
         </GridComponent>
         </div>
+
+        {/* Game Lobby Modal */}
+        <Modal
+          isOpen={showLobbyModal}
+          onClose={() => {
+            setShowLobbyModal(false);
+            setSelectedBootcamper(null);
+          }}
+          title={isLoadingGameData ? "Loading game details..." : "Game Lobby Details"}
+          maxWidth="6xl"
+        >
+          {isLoadingGameData ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="text-lg text-gray-400">Loading...</div>
+            </div>
+          ) : selectedBootcamper ? (
+            <div className="space-y-4">
+              <LiveGamesSection
+                inGameBootcampers={[selectedBootcamper]}
+                expandedByDefault={true}
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-8">
+              <div className="text-lg text-gray-400">No game data available</div>
+            </div>
+          )}
+        </Modal>
       </div>
     </div>
   );
