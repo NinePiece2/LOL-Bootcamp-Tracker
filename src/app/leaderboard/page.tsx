@@ -351,7 +351,7 @@ export default function LeaderboardPage() {
     const twitchUrl = props.twitchLogin ? `https://www.twitch.tv/${props.twitchLogin}` : null;
     
     return (
-      <div className="flex items-center gap-3 justify-center">
+      <div className="flex items-center gap-3 justify-start">
         {/* Twitch Profile Picture */}
         {twitchUrl && props.twitchProfileImage ? (
           <a 
