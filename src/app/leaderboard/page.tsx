@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
 import { GridComponent, ColumnsDirective, ColumnDirective, Page, Filter, Sort, Toolbar, Inject } from '@syncfusion/ej2-react-grids';
@@ -81,6 +81,7 @@ export default function LeaderboardPage() {
   const [showLobbyModal, setShowLobbyModal] = useState(false);
   const [selectedBootcamper, setSelectedBootcamper] = useState<BootcamperWithGames | null>(null);
   const [isLoadingGameData, setIsLoadingGameData] = useState(false);
+  const gridRef = useRef<GridComponent>(null);
   
   // Set initial list based on localStorage or user permissions
   const getInitialList = (): 'default' | 'user' => {
@@ -206,6 +207,39 @@ export default function LeaderboardPage() {
     const interval = setInterval(fetchLeaderboard, 300000); // Refresh every 5 minutes
     return () => clearInterval(interval);
   }, [currentList, session?.user]);
+
+  // Add search handler for auto-search on any input
+  useEffect(() => {
+    if (!gridRef.current) return;
+
+    const handleSearch = (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const searchValue = target.value;
+      
+      // Trigger search on any input change
+      gridRef.current?.search(searchValue);
+    };
+
+    // Wait for grid to be rendered and find the search input
+    const checkForSearchInput = setInterval(() => {
+      const searchInput = document.querySelector('.e-search input') as HTMLInputElement;
+      if (searchInput) {
+        searchInput.addEventListener('input', handleSearch);
+        clearInterval(checkForSearchInput);
+        
+        // Cleanup function
+        return () => {
+          searchInput.removeEventListener('input', handleSearch);
+        };
+      }
+    }, 100);
+
+    // Cleanup interval after 5 seconds if search input not found
+    setTimeout(() => clearInterval(checkForSearchInput), 5000);
+
+    return () => clearInterval(checkForSearchInput);
+  }, [isLoading]);
+
 
   const positionTemplate = (props: LeaderboardEntry) => {
     // Find the actual position in the bootcampers array
@@ -784,12 +818,13 @@ export default function LeaderboardPage() {
         {/* Leaderboard Grid */}
         <div className="card-modern p-0 overflow-hidden">
           <GridComponent
+            ref={gridRef}
             dataSource={bootcampers}
             allowPaging={true}
             allowSorting={true}
             pageSettings={{ pageSize: 20 }}
             toolbar={['Search']}
-            height={600}
+            height={800}
             enableHover={true}
           >
           <ColumnsDirective>
