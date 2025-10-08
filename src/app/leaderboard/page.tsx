@@ -412,7 +412,7 @@ export default function LeaderboardPage() {
               </div>
             </div>
             <p className="text-sm text-gray-400 mb-1">Highest Win Rate</p>
-            <p className="text-xl font-bold text-white mb-1">{mostGames?.name || highestWinRate?.summonerName || '—'}</p>
+            <p className="text-xl font-bold text-white mb-1">{highestWinRate?.name || highestWinRate?.summonerName || '—'}</p>
             <p className="text-sm text-gray-500">
               {highestWinRate?.soloQueue?.winRate?.toFixed(1) || 0}% WR
               ({(highestWinRate?.soloQueue?.wins || 0) + (highestWinRate?.soloQueue?.losses || 0)} games)
