@@ -280,9 +280,9 @@ Update production environment variables:
 
 ### Deployment Options
 
-**Vercel:**
+**Kubernetes (recommended):**
 ```bash
-vercel deploy
+kubectl apply -f kubernetes/
 ```
 
 **Docker:**
@@ -302,10 +302,6 @@ Note: You'll need to run workers separately or use a process manager like PM2.
 - [ ] Advanced analytics and stats
 - [ ] Multi-region support
 - [ ] Match history and VOD replay
-
-## License
-
-MIT
 
 ## Contributing
 
