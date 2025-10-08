@@ -224,7 +224,7 @@ async function checkSpectator(data: SpectatorJobData) {
           { delay: 60000 } // Wait 60 seconds before fetching match data
         );
 
-        // Schedule rank check after game ends (with delay to allow rank to update)
+        // Schedule peak rank check after game ends (with delay to allow rank to update)
         await rankQueue.add(
           'check-rank-after-game',
           {
@@ -233,6 +233,17 @@ async function checkSpectator(data: SpectatorJobData) {
             region,
           },
           { delay: 90000 } // Wait 90 seconds to allow Riot API to update rank
+        );
+
+        // Also update current rank after game ends
+        await rankQueue.add(
+          'update-current-rank',
+          {
+            bootcamperId,
+            puuid,
+            region,
+          },
+          { delay: 95000 } // Wait 95 seconds (slightly after peak rank check)
         );
 
         // TODO: Emit WebSocket event for game ended
@@ -560,6 +571,113 @@ async function checkAndUpdatePeakRank(data: RankJobData) {
 }
 
 /**
+ * Update current rank data for a bootcamper (called by periodic worker)
+ */
+async function updateCurrentRank(data: RankJobData) {
+  const { bootcamperId, puuid, region } = data;
+
+  const bootcamper = await prisma.bootcamper.findUnique({
+    where: { id: bootcamperId },
+  });
+
+  if (!bootcamper) {
+    console.warn(`Bootcamper ${bootcamperId} not found`);
+    return;
+  }
+
+  try {
+    const riotClient = getRiotClient();
+    const leagueEntries = await riotClient.getLeagueEntries(region, puuid);
+
+    const soloQueue = leagueEntries.find((entry: { queueType: string }) => entry.queueType === 'RANKED_SOLO_5x5');
+    const flexQueue = leagueEntries.find((entry: { queueType: string }) => entry.queueType === 'RANKED_FLEX_SR');
+
+    // Prepare update object
+    const updates: {
+      currentSoloTier?: string | null;
+      currentSoloRank?: string | null;
+      currentSoloLP?: number | null;
+      currentSoloWins?: number | null;
+      currentSoloLosses?: number | null;
+      currentFlexTier?: string | null;
+      currentFlexRank?: string | null;
+      currentFlexLP?: number | null;
+      currentFlexWins?: number | null;
+      currentFlexLosses?: number | null;
+      rankUpdatedAt: Date;
+    } = {
+      rankUpdatedAt: new Date(),
+    };
+
+    // Update Solo Queue data
+    if (soloQueue) {
+      updates.currentSoloTier = soloQueue.tier;
+      updates.currentSoloRank = soloQueue.rank;
+      updates.currentSoloLP = soloQueue.leaguePoints;
+      updates.currentSoloWins = soloQueue.wins;
+      updates.currentSoloLosses = soloQueue.losses;
+    } else {
+      updates.currentSoloTier = null;
+      updates.currentSoloRank = null;
+      updates.currentSoloLP = null;
+      updates.currentSoloWins = null;
+      updates.currentSoloLosses = null;
+    }
+
+    // Update Flex Queue data
+    if (flexQueue) {
+      updates.currentFlexTier = flexQueue.tier;
+      updates.currentFlexRank = flexQueue.rank;
+      updates.currentFlexLP = flexQueue.leaguePoints;
+      updates.currentFlexWins = flexQueue.wins;
+      updates.currentFlexLosses = flexQueue.losses;
+    } else {
+      updates.currentFlexTier = null;
+      updates.currentFlexRank = null;
+      updates.currentFlexLP = null;
+      updates.currentFlexWins = null;
+      updates.currentFlexLosses = null;
+    }
+
+    // Update database
+    await prisma.bootcamper.update({
+      where: { id: bootcamperId },
+      data: updates,
+    });
+
+    console.log(`✅ Updated current rank for ${bootcamper.summonerName}`);
+  } catch (error) {
+    // Silently handle 404s (unranked players)
+    if (!(error instanceof Error && error.message.includes('404'))) {
+      console.error(`Error updating current rank for ${bootcamper.summonerName}:`, error);
+    }
+  }
+}
+
+/**
+ * Queue a rank update for a bootcamper (called when bootcamper is added)
+ * Exported for use in API routes
+ */
+export async function queueRankUpdate(bootcamperId: string, puuid: string, region: RiotRegion) {
+  if (!rankQueue) {
+    console.warn('Workers not initialized. Cannot queue rank update.');
+    return;
+  }
+
+  await rankQueue.add(
+    'update-current-rank',
+    {
+      bootcamperId,
+      puuid,
+      region,
+    },
+    { delay: 2000 } // Wait 2 seconds before fetching rank
+  );
+  
+  console.log(`📊 Queued rank update for bootcamper ${bootcamperId}`);
+}
+
+/**
  * Schedule spectator checks for all active bootcampers
  */
 export async function scheduleSpectatorChecks() {
@@ -590,7 +708,7 @@ export async function scheduleSpectatorChecks() {
       },
       {
         repeat: {
-          every: 30000, // Check every 30 seconds
+          every: 60000, // Check every 60 seconds (increased from 30s)
         },
         jobId: `spectator-${bootcamper.id}`, // Unique job ID to avoid duplicates
       }
@@ -789,7 +907,12 @@ export async function initializeWorkers() {
   rankWorker = new Worker<RankJobData>(
     'rank-checks',
     async (job: Job<RankJobData>) => {
-      await checkAndUpdatePeakRank(job.data);
+      // Check if this is a post-game rank check or current rank update
+      if (job.name === 'check-rank-after-game') {
+        await checkAndUpdatePeakRank(job.data);
+      } else if (job.name === 'update-current-rank') {
+        await updateCurrentRank(job.data);
+      }
     },
     {
       connection: connectionConfig,
@@ -901,7 +1024,7 @@ export async function initializeWorkers() {
   // Schedule summoner name checks (runs every hour)
   await scheduleSummonerNameChecks();
 
-  // Note: Rank checks are triggered automatically after each game ends (not on a schedule)
+  // Note: Rank checks are triggered when a game ends or when a bootcamper is added
   
   console.log('Worker system initialized successfully');
   

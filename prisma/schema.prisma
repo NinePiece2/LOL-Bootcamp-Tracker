@@ -54,36 +54,47 @@ model Session {
 }
 
 model Bootcamper {
-  id             String           @id @default(uuid())
-  riotId         String?          @map("riot_id")
-  summonerName   String           @map("summoner_name")
-  summonerId     String?          @map("summoner_id")
-  puuid          String
-  region         String
-  twitchLogin    String?          @map("twitch_login")
-  twitchUserId   String?          @map("twitch_user_id")
-  role           BootcamperRole?
-  startDate      DateTime         @map("start_date") @db.Date
-  plannedEndDate DateTime         @map("planned_end_date") @db.Date
-  actualEndDate  DateTime?        @map("actual_end_date") @db.Date
-  status         BootcamperStatus @default(idle)
-  lastGameId     String?          @map("last_game_id")
-  createdAt      DateTime         @default(now()) @map("created_at")
-  updatedAt      DateTime         @updatedAt @map("updated_at")
-  name           String?
-  isDefault      Boolean          @default(false) @map("is_default")
-  userId         String?          @map("user_id")
-  peakSoloTier   String?          @map("peak_solo_tier")
-  peakSoloRank   String?          @map("peak_solo_rank")
-  peakSoloLP     Int?             @map("peak_solo_lp")
-  peakFlexTier   String?          @map("peak_flex_tier")
-  peakFlexRank   String?          @map("peak_flex_rank")
-  peakFlexLP     Int?             @map("peak_flex_lp")
-  peakUpdatedAt  DateTime?        @map("peak_updated_at")
-  user           User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  games          Game[]
-  teamMembers    TeamMember[]
-  twitchStreams  TwitchStream[]
+  id                String           @id @default(uuid())
+  riotId            String?          @map("riot_id")
+  summonerName      String           @map("summoner_name")
+  summonerId        String?          @map("summoner_id")
+  puuid             String
+  region            String
+  twitchLogin       String?          @map("twitch_login")
+  twitchUserId      String?          @map("twitch_user_id")
+  role              BootcamperRole?
+  startDate         DateTime         @map("start_date") @db.Date
+  plannedEndDate    DateTime         @map("planned_end_date") @db.Date
+  actualEndDate     DateTime?        @map("actual_end_date") @db.Date
+  status            BootcamperStatus @default(idle)
+  lastGameId        String?          @map("last_game_id")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  name              String?
+  isDefault         Boolean          @default(false) @map("is_default")
+  userId            String?          @map("user_id")
+  peakSoloTier      String?          @map("peak_solo_tier")
+  peakSoloRank      String?          @map("peak_solo_rank")
+  peakSoloLP        Int?             @map("peak_solo_lp")
+  peakFlexTier      String?          @map("peak_flex_tier")
+  peakFlexRank      String?          @map("peak_flex_rank")
+  peakFlexLP        Int?             @map("peak_flex_lp")
+  peakUpdatedAt     DateTime?        @map("peak_updated_at")
+  currentSoloTier   String?          @map("current_solo_tier")
+  currentSoloRank   String?          @map("current_solo_rank")
+  currentSoloLP     Int?             @map("current_solo_lp")
+  currentSoloWins   Int?             @map("current_solo_wins")
+  currentSoloLosses Int?             @map("current_solo_losses")
+  currentFlexTier   String?          @map("current_flex_tier")
+  currentFlexRank   String?          @map("current_flex_rank")
+  currentFlexLP     Int?             @map("current_flex_lp")
+  currentFlexWins   Int?             @map("current_flex_wins")
+  currentFlexLosses Int?             @map("current_flex_losses")
+  rankUpdatedAt     DateTime?        @map("rank_updated_at")
+  user              User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  games             Game[]
+  teamMembers       TeamMember[]
+  twitchStreams     TwitchStream[]
 
   @@unique([puuid, userId])
   @@map("bootcampers")

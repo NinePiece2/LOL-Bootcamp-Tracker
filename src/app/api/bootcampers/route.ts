@@ -5,7 +5,7 @@ import { getRiotClient } from '@/lib/riot-api';
 import { getTwitchClient } from '@/lib/twitch-api';
 import { RiotRegion } from '@/lib/types';
 import { auth } from '@/lib/auth';
-import { getQueues } from '@/lib/workers';
+import { getQueues, queueRankUpdate } from '@/lib/workers';
 
 const createBootcamperSchema = z.object({
   name: z.string().optional(),
@@ -132,20 +132,26 @@ export async function POST(request: NextRequest) {
       userIdFromData: userId 
     });
 
-    // Schedule initial rank check to set peak rank baseline
+    // Schedule initial rank check to set both peak and current rank baseline
     try {
-      const { rankQueue } = getQueues();
-      if (rankQueue && bootcamper.puuid) {
-        await rankQueue.add(
-          'initial-rank-check',
-          {
-            bootcamperId: bootcamper.id,
-            puuid: bootcamper.puuid,
-            region: bootcamper.region as RiotRegion,
-          },
-          { delay: 2000 } // Wait 2 seconds before initial rank check
-        );
-        console.log(`📊 Scheduled initial rank check for ${bootcamper.summonerName}`);
+      if (bootcamper.puuid) {
+        // Queue current rank update
+        await queueRankUpdate(bootcamper.id, bootcamper.puuid, bootcamper.region as RiotRegion);
+        
+        // Also queue peak rank check (initial baseline)
+        const { rankQueue } = getQueues();
+        if (rankQueue) {
+          await rankQueue.add(
+            'check-rank-after-game',
+            {
+              bootcamperId: bootcamper.id,
+              puuid: bootcamper.puuid,
+              region: bootcamper.region as RiotRegion,
+            },
+            { delay: 2500 } // Wait 2.5 seconds before initial peak rank check
+          );
+        }
+        console.log(`📊 Scheduled initial rank checks for ${bootcamper.summonerName}`);
       }
     } catch (err) {
       // Don't fail bootcamper creation if rank check scheduling fails
