@@ -116,8 +116,8 @@ jobs:
       - name: Wait for Rollout to Finish
         run: |
           echo "⏳ Waiting for rollout to finish..."
-          kubectl rollout status deployment/lol-bootcamp-tracker-ui -n lol-bootcamp-tracker --timeout=10m
-          kubectl rollout status deployment/lol-bootcamp-tracker-worker -n lol-bootcamp-tracker --timeout=10m
+          kubectl rollout status deployment/lol-bootcamp-tracker-ui -n lol-bootcamp-tracker --timeout=15m
+          kubectl rollout status deployment/lol-bootcamp-tracker-worker -n lol-bootcamp-tracker --timeout=15m
 
       - name: Mark Deployment as Successful
         if: success()
