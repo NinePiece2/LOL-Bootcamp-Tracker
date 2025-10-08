@@ -73,10 +73,11 @@ async function checkSpectator(data: SpectatorJobData) {
 
     if (activeGame) {
       // Summoner is in game
-      const isNewGame = bootcamper.status !== 'in_game';
+      // Check if this is a new game (different game ID or status changed)
+      const isNewGame = bootcamper.status !== 'in_game' || bootcamper.lastGameId !== activeGame.gameId.toString();
       
       if (isNewGame) {
-        console.log(`🎮 Game started for ${bootcamper.summonerName} (ID: ${activeGame.gameId})`);
+        console.log(`🎮 New game detected for ${bootcamper.summonerName} (ID: ${activeGame.gameId})`);
         console.log(`📋 Sample participant fields:`, Object.keys(activeGame.participants[0]));
         console.log(`📋 Sample participant data:`, {
           puuid: activeGame.participants[0].puuid?.substring(0, 8) + '...',
@@ -88,104 +89,116 @@ async function checkSpectator(data: SpectatorJobData) {
           spell1Id: activeGame.participants[0].spell1Id,
           spell2Id: activeGame.participants[0].spell2Id,
         });
-      }
       
-      // Enrich participants with rank data
-      console.log(`📊 Enriching ${activeGame.participants.length} participants with rank data...`);
-      const enrichedParticipants = await Promise.all(
-        activeGame.participants.map(async (participant) => {
-          try {
-            const playerName = participant.summonerName || participant.riotIdGameName || 'Unknown';
-            console.log(`Fetching rank for ${playerName} (puuid: ${participant.puuid?.substring(0, 8)}...)...`);
-            
-            // Fetch rank data for each participant by their puuid (v5 API)
-            const rankData = await riotClient.getLeagueEntries(region, participant.puuid);
-            console.log(`Rank data received for ${playerName}:`, rankData);
-            
-            const soloQueueRank = rankData.find((entry: { queueType: string }) => entry.queueType === 'RANKED_SOLO_5x5');
-            
-            const enriched = {
-              ...participant,
-              rank: soloQueueRank ? `${soloQueueRank.tier} ${soloQueueRank.rank}` : 'Unranked',
-              tier: soloQueueRank?.tier || null,
-              division: soloQueueRank?.rank || null,
-              leaguePoints: soloQueueRank?.leaguePoints || 0,
-            };
-            
-            console.log(`✅ Enriched participant ${playerName}:`, {
-              rank: enriched.rank,
-              tier: enriched.tier,
-              division: enriched.division,
-              LP: enriched.leaguePoints,
-              hadData: !!soloQueueRank,
-            });
-            
-            return enriched;
-          } catch (error) {
-            const playerName = participant.summonerName || participant.riotIdGameName || 'Unknown';
-            console.error(`❌ Failed to fetch rank for ${playerName}:`, {
-              error: error instanceof Error ? error.message : String(error),
-              puuid: participant.puuid?.substring(0, 8) + '...',
-            });
-            return {
-              ...participant,
-              rank: 'Unranked',
-              tier: null,
-              division: null,
-              leaguePoints: 0,
-            };
-          }
-        })
-      );
-      
-      console.log(`📊 Enrichment complete. Sample result:`, {
-        name: enrichedParticipants[0]?.summonerName,
-        rank: enrichedParticipants[0]?.rank,
-        tier: enrichedParticipants[0]?.tier,
-      });
+        // Enrich participants with rank data ONLY for new games
+        console.log(`📊 Enriching ${activeGame.participants.length} participants with rank data...`);
+        const enrichedParticipants = await Promise.all(
+          activeGame.participants.map(async (participant) => {
+            try {
+              const playerName = participant.summonerName || participant.riotIdGameName || 'Unknown';
+              console.log(`Fetching rank for ${playerName} (puuid: ${participant.puuid?.substring(0, 8)}...)...`);
+              
+              // Fetch rank data for each participant by their puuid (v5 API)
+              const rankData = await riotClient.getLeagueEntries(region, participant.puuid);
+              console.log(`Rank data received for ${playerName}:`, rankData);
+              
+              // Find solo queue rank
+              const soloQueueRank = rankData.find((entry: { queueType: string }) => entry.queueType === 'RANKED_SOLO_5x5');
+              
+              const enriched = {
+                ...participant,
+                rank: soloQueueRank ? `${soloQueueRank.tier} ${soloQueueRank.rank}` : 'Unranked',
+                tier: soloQueueRank?.tier || null,
+                division: soloQueueRank?.rank || null,
+                leaguePoints: soloQueueRank?.leaguePoints || 0,
+              };
+              
+              console.log(`✅ Enriched participant ${playerName}:`, {
+                rank: enriched.rank,
+                tier: enriched.tier,
+                division: enriched.division,
+                LP: enriched.leaguePoints,
+                hadData: !!soloQueueRank,
+              });
+              
+              return enriched;
+            } catch (error) {
+              const playerName = participant.summonerName || participant.riotIdGameName || 'Unknown';
+              console.error(`❌ Failed to fetch rank for ${playerName}:`, {
+                error: error instanceof Error ? error.message : String(error),
+                puuid: participant.puuid?.substring(0, 8) + '...',
+              });
+              return {
+                ...participant,
+                rank: 'Unranked',
+                tier: null,
+                division: null,
+                leaguePoints: 0,
+              };
+            }
+          })
+        );
+        
+        console.log(`📊 Enrichment complete. Sample result:`, {
+          name: enrichedParticipants[0]?.summonerName,
+          rank: enrichedParticipants[0]?.rank,
+          tier: enrichedParticipants[0]?.tier,
+        });
 
-      const enrichedMatchData = {
-        ...activeGame,
-        participants: enrichedParticipants,
-      };
-      
-      // Always upsert the game record to ensure matchData is stored
-      // This handles both new games and existing games that might not have matchData
-      await prisma.$transaction([
-        // Update bootcamper status
-        prisma.bootcamper.update({
-          where: { id: bootcamperId },
-          data: {
-            status: 'in_game',
-            lastGameId: activeGame.gameId.toString(),
-          },
-        }),
-        // Create or update game record, storing enriched lobby data in matchData
-        prisma.game.upsert({
-          where: {
-            riotGameId_bootcamperId: {
+        const enrichedMatchData = {
+          ...activeGame,
+          participants: enrichedParticipants,
+        };
+
+        // Upsert the game record with enriched data for NEW games
+        await prisma.$transaction([
+          // Update bootcamper status
+          prisma.bootcamper.update({
+            where: { id: bootcamperId },
+            data: {
+              status: 'in_game',
+              lastGameId: activeGame.gameId.toString(),
+            },
+          }),
+          // Create or update game record, storing enriched lobby data in matchData
+          prisma.game.upsert({
+            where: {
+              riotGameId_bootcamperId: {
+                riotGameId: activeGame.gameId.toString(),
+                bootcamperId,
+              },
+            },
+            create: {
               riotGameId: activeGame.gameId.toString(),
               bootcamperId,
+              startedAt: new Date(activeGame.gameStartTime),
+              status: 'live',
+              // @ts-expect-error - Prisma JSON type differences between local and Docker
+              matchData: enrichedMatchData, // Store enriched lobby info
             },
-          },
-          create: {
-            riotGameId: activeGame.gameId.toString(),
-            bootcamperId,
-            startedAt: new Date(activeGame.gameStartTime),
-            status: 'live',
-            // @ts-expect-error - Prisma JSON type differences between local and Docker
-            matchData: enrichedMatchData, // Store enriched lobby info
-          },
-          update: {
-            status: 'live',
-            // @ts-expect-error - Prisma JSON type differences between local and Docker
-            matchData: enrichedMatchData, // Update enriched lobby info
-          },
-        }),
-      ]);
+            update: {
+              status: 'live',
+              // @ts-expect-error - Prisma JSON type differences between local and Docker
+              matchData: enrichedMatchData, // Update enriched lobby info only for new games
+            },
+          }),
+        ]);
 
-      if (isNewGame) {
         // TODO: Emit WebSocket event for game started
+      } else {
+        // Game is ongoing but not new - just update bootcamper status if needed
+        // Skip rank enrichment for existing games to save API calls
+        console.log(`♻️ Game ${activeGame.gameId} already tracked for ${bootcamper.summonerName}, skipping rank fetch`);
+        
+        if (bootcamper.status !== 'in_game') {
+          await prisma.bootcamper.update({
+            where: { id: bootcamperId },
+            data: {
+              status: 'in_game',
+              lastGameId: activeGame.gameId.toString(),
+            },
+          });
+        }
       }
     } else {
       // Summoner not in game
