@@ -10,6 +10,7 @@ on:
       - docker/Dockerfile
       - package.json
       - package-lock.json
+      - workers.ts
   workflow_dispatch:
 
 jobs:

@@ -11,6 +11,7 @@ on:
       - package.json
       - package-lock.json
       - docker/Dockerfile.migrate
+      - workers.ts
   workflow_dispatch:
 
 jobs:
