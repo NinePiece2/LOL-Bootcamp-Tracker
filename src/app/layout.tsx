@@ -17,6 +17,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "LoL Bootcamp Tracker",
   description: "Track League of Legends Korean bootcampers in real-time",
+  keywords: ["LoL", "Bootcamp", "Tracker", "Korean", "League of Legends", "Esports", "Korea", "Gaming", 
+    "Korean Solo Queue", "Korean Ranked", "LoL Stats", "LoL Analytics", "LoL Performance", "Korean Esports",
+    "LoL Bootcamp Tracker"],
+  authors: [{ name: "Romit Sagu", url: "https://romitsagu.com" }],
+  creator: "Romit Sagu",
+  openGraph: {
+    title: "LoL Bootcamp Tracker",
+    description: "Track League of Legends Korean bootcampers in real-time",
+    url: process.env.NEXT_PUBLIC_BASE_URL || "https://lol-bootcamp-tracker.romitsagu.com/",
+  }
 };
 
 export default function RootLayout({
