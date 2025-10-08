@@ -9,6 +9,21 @@
 
 import { initializeWorkers, shutdownWorkers } from './src/lib/workers';
 
+// Utility function to add timestamps to logs
+const getTimestamp = () => {
+  const now = new Date();
+  return `[${now.toISOString()}]`;
+};
+
+// Override console methods to include timestamps
+const originalLog = console.log;
+const originalWarn = console.warn;
+const originalError = console.error;
+
+console.log = (...args: unknown[]) => originalLog(getTimestamp(), ...args);
+console.warn = (...args: unknown[]) => originalWarn(getTimestamp(), ...args);
+console.error = (...args: unknown[]) => originalError(getTimestamp(), ...args);
+
 console.log('🚀 Starting League Bootcamp Tracker Workers...');
 
 // Initialize workers
