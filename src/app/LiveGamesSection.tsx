@@ -84,7 +84,7 @@ const getDpmlolUrl = (riotId: string | null | undefined, summonerName: string | 
   }
   
   const cleanName = encodeURIComponent(nameWithTag);
-  return `https://www.dpm.lol/${cleanName}`;
+  return `https://dpm.lol/${cleanName}`;
 };
 
 const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({ 
