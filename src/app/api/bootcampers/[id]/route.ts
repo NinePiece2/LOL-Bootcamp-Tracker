@@ -98,7 +98,7 @@ export async function PATCH(
 
     if (twitchChanged) {
       const twitchClient = getTwitchClient();
-      const users = await twitchClient.getUsers([data.twitchLogin!]);
+      const users = await twitchClient.getUsersByLogin([data.twitchLogin!]);
       
       if (users.length === 0) {
         return NextResponse.json(
