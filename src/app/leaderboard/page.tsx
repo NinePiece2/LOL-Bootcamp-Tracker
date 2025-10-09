@@ -822,9 +822,9 @@ export default function LeaderboardPage() {
             dataSource={bootcampers}
             allowPaging={true}
             allowSorting={true}
-            pageSettings={{ pageSize: 20 }}
+            pageSettings={{ pageSize: 10 }}
             toolbar={['Search']}
-            height={800}
+            height={850}
             enableHover={true}
           >
           <ColumnsDirective>
@@ -838,7 +838,7 @@ export default function LeaderboardPage() {
             <ColumnDirective
               field="summonerName"
               headerText="Player"
-              width="225"
+              width="250"
               textAlign="Center"
               template={summonerTemplate}
             />
@@ -852,7 +852,7 @@ export default function LeaderboardPage() {
             <ColumnDirective
               field="peakRank"
               headerText="Peak Rank"
-              width="160"
+              width="140"
               textAlign="Center"
               template={peakRankTemplate}
             />
