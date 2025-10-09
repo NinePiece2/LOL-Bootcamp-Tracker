@@ -985,25 +985,28 @@ async function syncBootcampersWithJobs() {
     // Check for orphaned jobs (bootcampers that were deleted)
     const allSpectatorJobs = await spectatorQueue.getRepeatableJobs();
     for (const job of allSpectatorJobs) {
-      const bootcamperId = job.id?.replace('spectator-', '');
+      // Extract bootcamper ID from the job name (format: "check-{id}")
+      const keyMatch = job.name?.match(/^check-(.+)$/);
+      const bootcamperId = keyMatch ? keyMatch[1] : null;
+      
       if (bootcamperId && !bootcamperIds.has(bootcamperId)) {
         console.log(`  🗑️  Removing orphaned jobs for deleted bootcamper ${bootcamperId}`);
         
         // Remove all job types for this bootcamper
         await spectatorQueue.removeRepeatableByKey(job.key);
         
-        const nameJob = await summonerNameQueue.getRepeatableJobs();
-        const nameJobToRemove = nameJob.find(j => j.id === `summoner-name-${bootcamperId}`);
+        const nameJobs = await summonerNameQueue.getRepeatableJobs();
+        const nameJobToRemove = nameJobs.find(j => j.name === `check-${bootcamperId}`);
         if (nameJobToRemove) await summonerNameQueue.removeRepeatableByKey(nameJobToRemove.key);
         
         const rankJobs = await rankQueue.getRepeatableJobs();
-        const currentRankJob = rankJobs.find(j => j.id === `periodic-current-rank-${bootcamperId}`);
-        const peakRankJob = rankJobs.find(j => j.id === `periodic-peak-rank-${bootcamperId}`);
+        const currentRankJob = rankJobs.find(j => j.name === 'update-current-rank' && j.key.includes(bootcamperId));
+        const peakRankJob = rankJobs.find(j => j.name === 'check-rank-after-game' && j.key.includes(bootcamperId));
         if (currentRankJob) await rankQueue.removeRepeatableByKey(currentRankJob.key);
         if (peakRankJob) await rankQueue.removeRepeatableByKey(peakRankJob.key);
         
         const twitchJobs = await twitchStreamQueue.getRepeatableJobs();
-        const twitchJob = twitchJobs.find(j => j.id === `twitch-stream-${bootcamperId}`);
+        const twitchJob = twitchJobs.find(j => j.name === `check-${bootcamperId}`);
         if (twitchJob) await twitchStreamQueue.removeRepeatableByKey(twitchJob.key);
         
         removedCount++;
@@ -1020,12 +1023,16 @@ async function syncBootcampersWithJobs() {
     for (const bootcamper of bootcampers) {
       if (!bootcamper.puuid) continue;
 
-      // Check which jobs exist for this bootcamper
-      const hasSpectatorJob = spectatorRepeatableJobs.some(j => j.id === `spectator-${bootcamper.id}`);
-      const hasNameJob = nameRepeatableJobs.some(j => j.id === `summoner-name-${bootcamper.id}`);
-      const hasCurrentRankJob = rankRepeatableJobs.some(j => j.id === `periodic-current-rank-${bootcamper.id}`);
-      const hasPeakRankJob = rankRepeatableJobs.some(j => j.id === `periodic-peak-rank-${bootcamper.id}`);
-      const hasTwitchJob = twitchRepeatableJobs.some(j => j.id === `twitch-stream-${bootcamper.id}`);
+      // Check which jobs exist for this bootcamper by checking the job NAME (not ID)
+      const hasSpectatorJob = spectatorRepeatableJobs.some(j => j.name === `check-${bootcamper.id}`);
+      const hasNameJob = nameRepeatableJobs.some(j => j.name === `check-${bootcamper.id}`);
+      const hasCurrentRankJob = rankRepeatableJobs.some(j => 
+        j.name === 'update-current-rank' && j.key.includes(bootcamper.id)
+      );
+      const hasPeakRankJob = rankRepeatableJobs.some(j => 
+        j.name === 'check-rank-after-game' && j.key.includes(bootcamper.id)
+      );
+      const hasTwitchJob = twitchRepeatableJobs.some(j => j.name === `check-${bootcamper.id}`);
       
       const missingJobs: string[] = [];
       
