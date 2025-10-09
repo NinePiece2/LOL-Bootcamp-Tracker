@@ -1323,6 +1323,153 @@ export async function shutdownWorkers() {
   console.log('Worker system shut down');
 }
 
+/**
+ * Add a new bootcamper to all periodic jobs
+ * Called when a bootcamper is created
+ */
+export async function addBootcamperToPeriodicJobs(
+  bootcamperId: string,
+  puuid: string,
+  region: RiotRegion,
+  twitchUserId?: string,
+  twitchLogin?: string
+) {
+  if (!spectatorQueue || !summonerNameQueue || !rankQueue) {
+    console.warn('Workers not initialized. Cannot add bootcamper to periodic jobs.');
+    return;
+  }
+
+  console.log(`📋 Adding bootcamper ${bootcamperId} to all periodic jobs...`);
+
+  // Add to spectator checks (every 60 seconds)
+  await spectatorQueue.add(
+    `check-${bootcamperId}`,
+    {
+      bootcamperId,
+      puuid,
+      region,
+    },
+    {
+      repeat: {
+        every: 60000,
+      },
+      jobId: `spectator-${bootcamperId}`,
+    }
+  );
+  console.log(`  ✓ Added to spectator checks`);
+
+  // Add to summoner name checks (every hour)
+  await summonerNameQueue.add(
+    `check-${bootcamperId}`,
+    {
+      bootcamperId,
+      puuid,
+      region,
+    },
+    {
+      repeat: {
+        every: 3600000,
+      },
+      jobId: `summoner-name-${bootcamperId}`,
+    }
+  );
+  console.log(`  ✓ Added to summoner name checks`);
+
+  // Add to current rank checks (every 5 minutes)
+  await rankQueue.add(
+    'update-current-rank',
+    {
+      bootcamperId,
+      puuid,
+      region,
+    },
+    {
+      repeat: {
+        every: 300000,
+      },
+      jobId: `periodic-current-rank-${bootcamperId}`,
+    }
+  );
+  console.log(`  ✓ Added to current rank checks`);
+
+  // Add to peak rank checks (every 5 minutes)
+  await rankQueue.add(
+    'check-rank-after-game',
+    {
+      bootcamperId,
+      puuid,
+      region,
+    },
+    {
+      repeat: {
+        every: 300000,
+      },
+      jobId: `periodic-peak-rank-${bootcamperId}`,
+    }
+  );
+  console.log(`  ✓ Added to peak rank checks`);
+
+  // Add to Twitch stream checks if Twitch account exists (every 60 seconds)
+  if (twitchUserId && twitchLogin && twitchStreamQueue) {
+    await twitchStreamQueue.add(
+      `check-${bootcamperId}`,
+      {
+        bootcamperId,
+        twitchUserId,
+        twitchLogin,
+      },
+      {
+        repeat: {
+          every: 60000,
+        },
+        jobId: `twitch-stream-${bootcamperId}`,
+      }
+    );
+    console.log(`  ✓ Added to Twitch stream checks`);
+  }
+
+  console.log(`✅ Bootcamper ${bootcamperId} added to all periodic jobs`);
+}
+
+/**
+ * Remove a bootcamper from all periodic jobs
+ * Called when a bootcamper is deleted or bootcamp ends
+ */
+export async function removeBootcamperFromPeriodicJobs(bootcamperId: string) {
+  if (!spectatorQueue || !summonerNameQueue || !rankQueue || !twitchStreamQueue) {
+    console.warn('Workers not initialized. Cannot remove bootcamper from periodic jobs.');
+    return;
+  }
+
+  console.log(`🗑️  Removing bootcamper ${bootcamperId} from all periodic jobs...`);
+
+  try {
+    // Remove from spectator checks
+    const spectatorJob = await spectatorQueue.getJob(`spectator-${bootcamperId}`);
+    if (spectatorJob) await spectatorJob.remove();
+
+    // Remove from summoner name checks
+    const nameJob = await summonerNameQueue.getJob(`summoner-name-${bootcamperId}`);
+    if (nameJob) await nameJob.remove();
+
+    // Remove from current rank checks
+    const currentRankJob = await rankQueue.getJob(`periodic-current-rank-${bootcamperId}`);
+    if (currentRankJob) await currentRankJob.remove();
+
+    // Remove from peak rank checks
+    const peakRankJob = await rankQueue.getJob(`periodic-peak-rank-${bootcamperId}`);
+    if (peakRankJob) await peakRankJob.remove();
+
+    // Remove from Twitch stream checks
+    const twitchJob = await twitchStreamQueue.getJob(`twitch-stream-${bootcamperId}`);
+    if (twitchJob) await twitchJob.remove();
+
+    console.log(`✅ Bootcamper ${bootcamperId} removed from all periodic jobs`);
+  } catch (error) {
+    console.error(`Error removing bootcamper ${bootcamperId} from periodic jobs:`, error);
+  }
+}
+
 // Export queues for external use (after initialization)
 export function getQueues() {
   return {

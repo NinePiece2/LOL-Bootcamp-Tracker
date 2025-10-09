@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { getTwitchClient } from '@/lib/twitch-api';
 import { auth } from '@/lib/auth';
+import { getQueues, removeBootcamperFromPeriodicJobs } from '@/lib/workers';
 
 const updateBootcamperSchema = z.object({
   name: z.string().optional(),
@@ -90,13 +91,36 @@ export async function PATCH(
       );
     }
 
-    // If updating Twitch login, fetch Twitch user ID
+    // Handle Twitch account changes
     let twitchUserId: string | undefined;
-    if (data.twitchLogin) {
+    let twitchProfileImage: Buffer | undefined;
+    const twitchChanged = data.twitchLogin && data.twitchLogin !== existing.twitchLogin;
+
+    if (twitchChanged) {
       const twitchClient = getTwitchClient();
-      const twitchUser = await twitchClient.getUserByLogin(data.twitchLogin);
-      if (twitchUser) {
-        twitchUserId = twitchUser.id;
+      const users = await twitchClient.getUsers([data.twitchLogin!]);
+      
+      if (users.length === 0) {
+        return NextResponse.json(
+          { error: 'Twitch user not found' },
+          { status: 404 }
+        );
+      }
+
+      twitchUserId = users[0].id;
+
+      // Fetch profile image
+      const imageResponse = await fetch(users[0].profile_image_url);
+      const imageBuffer = await imageResponse.arrayBuffer();
+      twitchProfileImage = Buffer.from(imageBuffer);
+
+      // Remove old Twitch job if it exists
+      if (existing.twitchUserId) {
+        const { twitchStreamQueue } = getQueues();
+        if (twitchStreamQueue) {
+          const oldJob = await twitchStreamQueue.getJob(`twitch-stream-${id}`);
+          if (oldJob) await oldJob.remove();
+        }
       }
     }
 
@@ -107,7 +131,8 @@ export async function PATCH(
         ...(data.name !== undefined && { name: data.name || null }),
         ...(data.riotId !== undefined && { riotId: data.riotId || null }),
         ...(data.twitchLogin !== undefined && { twitchLogin: data.twitchLogin }),
-        ...(twitchUserId !== undefined && { twitchUserId }),
+        ...(twitchUserId && { twitchUserId }),
+        ...(twitchProfileImage && { twitchProfileImage }),
         ...(data.role !== undefined && { role: data.role }),
         ...(data.startDate !== undefined && {
           startDate: new Date(data.startDate),
@@ -121,6 +146,28 @@ export async function PATCH(
         ...(data.status !== undefined && { status: data.status }),
       },
     });
+
+    // If Twitch was added/changed, add new Twitch job
+    if (twitchChanged && bootcamper.twitchUserId && bootcamper.twitchLogin) {
+      const { twitchStreamQueue } = getQueues();
+      if (twitchStreamQueue) {
+        await twitchStreamQueue.add(
+          `check-${id}`,
+          {
+            bootcamperId: id,
+            twitchUserId: bootcamper.twitchUserId,
+            twitchLogin: bootcamper.twitchLogin,
+          },
+          {
+            repeat: {
+              every: 60000,
+            },
+            jobId: `twitch-stream-${id}`,
+          }
+        );
+        console.log(`✅ Added Twitch stream check for ${bootcamper.summonerName}`);
+      }
+    }
 
     return NextResponse.json(bootcamper);
   } catch (error) {
@@ -175,9 +222,14 @@ export async function DELETE(
       );
     }
 
+    // Remove from all periodic jobs before deletion
+    await removeBootcamperFromPeriodicJobs(id);
+
     await prisma.bootcamper.delete({
       where: { id },
     });
+
+    console.log(`🗑️  Deleted bootcamper: ${existing.summonerName} (ID: ${id})`);
 
     return NextResponse.json({ success: true });
   } catch (error) {

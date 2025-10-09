@@ -5,7 +5,7 @@ import { getRiotClient } from '@/lib/riot-api';
 import { getTwitchClient } from '@/lib/twitch-api';
 import { RiotRegion } from '@/lib/types';
 import { auth } from '@/lib/auth';
-import { getQueues, queueRankUpdate } from '@/lib/workers';
+import { getQueues, queueRankUpdate, addBootcamperToPeriodicJobs } from '@/lib/workers';
 
 const createBootcamperSchema = z.object({
   name: z.string().optional(),
@@ -208,13 +208,13 @@ export async function POST(request: NextRequest) {
       userIdFromData: userId 
     });
 
-    // Schedule initial rank check to set both peak and current rank baseline
+    // Schedule initial rank checks AND add to periodic jobs
     try {
       if (bootcamper.puuid) {
-        // Queue current rank update
+        // Queue immediate current rank update
         await queueRankUpdate(bootcamper.id, bootcamper.puuid, bootcamper.region as RiotRegion);
         
-        // Also queue peak rank check (initial baseline)
+        // Queue immediate peak rank check
         const { rankQueue } = getQueues();
         if (rankQueue) {
           await rankQueue.add(
@@ -228,10 +228,19 @@ export async function POST(request: NextRequest) {
           );
         }
         console.log(`📊 Scheduled initial rank checks for ${bootcamper.summonerName}`);
+
+        // Add to all periodic jobs (spectator, name updates, rank checks, twitch)
+        await addBootcamperToPeriodicJobs(
+          bootcamper.id,
+          bootcamper.puuid,
+          bootcamper.region as RiotRegion,
+          bootcamper.twitchUserId || undefined,
+          bootcamper.twitchLogin || undefined
+        );
       }
     } catch (err) {
-      // Don't fail bootcamper creation if rank check scheduling fails
-      console.error('Failed to schedule initial rank check:', err);
+      // Don't fail bootcamper creation if job scheduling fails
+      console.error('Failed to schedule jobs for new bootcamper:', err);
     }
 
     return NextResponse.json(bootcamper, { status: 201 });
