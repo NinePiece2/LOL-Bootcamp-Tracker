@@ -1000,10 +1000,11 @@ async function syncBootcampersWithJobs() {
     for (const bootcamper of bootcampers) {
       if (!bootcamper.puuid) continue;
 
-      // Check if spectator job exists
-      const spectatorJob = await spectatorQueue.getJob(`spectator-${bootcamper.id}`);
+      // Check if spectator job exists in repeatable jobs
+      const spectatorRepeatableJobs = await spectatorQueue.getRepeatableJobs();
+      const hasSpectatorJob = spectatorRepeatableJobs.some(j => j.id === `spectator-${bootcamper.id}`);
       
-      if (!spectatorJob) {
+      if (!hasSpectatorJob) {
         console.log(`  ➕ Adding missing jobs for ${bootcamper.summonerName}`);
         
         // Add spectator check
