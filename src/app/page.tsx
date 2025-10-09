@@ -776,7 +776,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-black">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <div className="mx-auto max-w-[85vw] px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between animate-fade-in">
           <div className="text-center flex-1 space-y-4">
