@@ -998,19 +998,15 @@ async function syncBootcampersWithJobs() {
 
     // Get all repeatable jobs once to avoid repeated calls
     const spectatorRepeatableJobs = await spectatorQueue.getRepeatableJobs();
-    
-    // Debug: log structure of repeatable jobs
-    if (spectatorRepeatableJobs.length > 0) {
-      console.log(`🔍 Debug: Sample repeatable job structure:`, JSON.stringify(spectatorRepeatableJobs[0], null, 2));
-    }
 
     // Add missing jobs for active bootcampers
     for (const bootcamper of bootcampers) {
       if (!bootcamper.puuid) continue;
 
       // Check if spectator job exists in repeatable jobs
-      // BullMQ repeatable jobs are identified by their key, not jobId
-      const hasSpectatorJob = spectatorRepeatableJobs.some(j => j.key?.includes(bootcamper.id));
+      // BullMQ repeatable jobs have a 'name' field that matches the job name we passed
+      const expectedJobName = `check-${bootcamper.id}`;
+      const hasSpectatorJob = spectatorRepeatableJobs.some(j => j.name === expectedJobName);
       
       if (!hasSpectatorJob) {
         console.log(`  ➕ Adding missing jobs for ${bootcamper.summonerName}`);
