@@ -1111,6 +1111,113 @@ async function syncBootcampersWithJobs() {
 }
 
 /**
+ * Clean up stale games on worker startup
+ * Marks games as completed if bootcamper is no longer in-game
+ */
+async function cleanupStaleGames() {
+  try {
+    // Find all bootcampers marked as in_game
+    const inGameBootcampers = await prisma.bootcamper.findMany({
+      where: {
+        status: 'in_game',
+      },
+      select: {
+        id: true,
+        summonerName: true,
+        puuid: true,
+        region: true,
+        lastGameId: true,
+        status: true,
+      },
+    });
+
+    if (inGameBootcampers.length === 0) {
+      console.log('  ✓ No in-game bootcampers to check');
+      return;
+    }
+
+    console.log(`  📋 Checking ${inGameBootcampers.length} bootcampers marked as in-game...`);
+    
+    const riotClient = getRiotClient();
+    let cleanedCount = 0;
+
+    for (const bootcamper of inGameBootcampers) {
+      try {
+        // Check if they're actually in a game
+        const activeGame = await riotClient.getActiveGame(
+          bootcamper.region as RiotRegion,
+          bootcamper.puuid
+        );
+
+        if (!activeGame && bootcamper.lastGameId) {
+          // Game ended but wasn't marked as completed
+          console.log(`  🧹 Cleaning up stale game for ${bootcamper.summonerName} (Game ID: ${bootcamper.lastGameId})`);
+          
+          await prisma.$transaction([
+            // Update bootcamper status to idle
+            prisma.bootcamper.update({
+              where: { id: bootcamper.id },
+              data: { status: 'idle' },
+            }),
+            // Mark game as completed
+            prisma.game.updateMany({
+              where: {
+                riotGameId: bootcamper.lastGameId,
+                bootcamperId: bootcamper.id,
+                status: { in: ['live', 'in_progress'] },
+              },
+              data: {
+                status: 'completed',
+                endedAt: new Date(),
+              },
+            }),
+          ]);
+          
+          cleanedCount++;
+        }
+      } catch (error) {
+        // 404 means not in game - this is expected for cleanup
+        if (error instanceof Error && error.message.includes('404')) {
+          if (bootcamper.lastGameId) {
+            console.log(`  🧹 Cleaning up stale game for ${bootcamper.summonerName} (Game ID: ${bootcamper.lastGameId})`);
+            
+            await prisma.$transaction([
+              prisma.bootcamper.update({
+                where: { id: bootcamper.id },
+                data: { status: 'idle' },
+              }),
+              prisma.game.updateMany({
+                where: {
+                  riotGameId: bootcamper.lastGameId,
+                  bootcamperId: bootcamper.id,
+                  status: { in: ['live', 'in_progress'] },
+                },
+                data: {
+                  status: 'completed',
+                  endedAt: new Date(),
+                },
+              }),
+            ]);
+            
+            cleanedCount++;
+          }
+        } else {
+          console.error(`  ⚠️  Error checking ${bootcamper.summonerName}:`, error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
+
+    if (cleanedCount > 0) {
+      console.log(`  ✅ Cleaned up ${cleanedCount} stale game(s)`);
+    } else {
+      console.log(`  ✓ All in-game statuses are accurate`);
+    }
+  } catch (error) {
+    console.error('❌ Error cleaning up stale games:', error);
+  }
+}
+
+/**
  * Initialize worker system
  */
 export async function initializeWorkers() {
@@ -1354,6 +1461,10 @@ export async function initializeWorkers() {
 
   console.log('Clearing old rank jobs...');
   await rankQueue.obliterate({ force: true });
+  
+  // Clean up stale games on startup
+  console.log('🧹 Cleaning up stale games...');
+  await cleanupStaleGames();
   
   // Schedule initial spectator checks with new PUUID-based jobs
   await scheduleSpectatorChecks();
