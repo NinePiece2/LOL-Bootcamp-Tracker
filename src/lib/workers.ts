@@ -996,13 +996,21 @@ async function syncBootcampersWithJobs() {
       }
     }
 
+    // Get all repeatable jobs once to avoid repeated calls
+    const spectatorRepeatableJobs = await spectatorQueue.getRepeatableJobs();
+    
+    // Debug: log structure of repeatable jobs
+    if (spectatorRepeatableJobs.length > 0) {
+      console.log(`🔍 Debug: Sample repeatable job structure:`, JSON.stringify(spectatorRepeatableJobs[0], null, 2));
+    }
+
     // Add missing jobs for active bootcampers
     for (const bootcamper of bootcampers) {
       if (!bootcamper.puuid) continue;
 
       // Check if spectator job exists in repeatable jobs
-      const spectatorRepeatableJobs = await spectatorQueue.getRepeatableJobs();
-      const hasSpectatorJob = spectatorRepeatableJobs.some(j => j.id === `spectator-${bootcamper.id}`);
+      // BullMQ repeatable jobs are identified by their key, not jobId
+      const hasSpectatorJob = spectatorRepeatableJobs.some(j => j.key?.includes(bootcamper.id));
       
       if (!hasSpectatorJob) {
         console.log(`  ➕ Adding missing jobs for ${bootcamper.summonerName}`);
