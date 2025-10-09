@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { getChampionNameById } from "@/lib/utils";
 import { GameProfileLinks } from "@/components/game-profile-links";
@@ -70,6 +70,8 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
 }) => {
   const [enrichedBootcampers, setEnrichedBootcampers] = useState<Map<string, Bootcamper>>(new Map());
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
+  const [currentChampions, setCurrentChampions] = useState<Record<string, { championId: number | null; championName: string | null }>>({});
+  const fetchedChampionsRef = useRef<Set<string>>(new Set());
 
   // Only enrich bootcampers that are expanded or expanded by default
   useEffect(() => {
@@ -217,6 +219,67 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
     enrichData();
   }, [inGameBootcampers, expandedLobby, expandedByDefault, enrichedBootcampers, enrichingIds]);
 
+  // Fetch current champion for all bootcampers immediately on page load
+  useEffect(() => {
+    const toFetchIds: string[] = [];
+
+    inGameBootcampers.forEach((bootcamper) => {
+      // Check if we've already fetched using the ref
+      if (!fetchedChampionsRef.current.has(bootcamper.id)) {
+        toFetchIds.push(bootcamper.id);
+      }
+    });
+
+    if (toFetchIds.length === 0) return;
+
+    // Mark all as fetched immediately to prevent duplicate requests
+    toFetchIds.forEach(id => fetchedChampionsRef.current.add(id));
+
+    let cancelled = false;
+
+    const doFetch = async () => {
+      // Fetch all in parallel
+      const results = await Promise.allSettled(
+        toFetchIds.map(async (id) => {
+          if (cancelled) return null;
+          
+          try {
+            const res = await fetch(`/api/current-champ?bootcamperId=${encodeURIComponent(id)}`);
+            if (res.ok) {
+              const data = await res.json();
+              // Cache the champion name for future enrichments
+              if (data.championId && data.championName && !championNameCache[data.championId]) {
+                championNameCache[data.championId] = data.championName;
+              }
+              return { id, data };
+            }
+            return { id, data: { championId: null, championName: null } };
+          } catch (err) {
+            console.error('Error fetching current champ for', id, err);
+            return { id, data: { championId: null, championName: null } };
+          }
+        })
+      );
+
+      if (!cancelled) {
+        // Update all results at once
+        setCurrentChampions(prev => {
+          const updated = { ...prev };
+          results.forEach((result) => {
+            if (result.status === 'fulfilled' && result.value) {
+              updated[result.value.id] = result.value.data;
+            }
+          });
+          return updated;
+        });
+      }
+    };
+
+    doFetch();
+
+    return () => { cancelled = true; };
+  }, [inGameBootcampers]);
+
   return (
     <div className="space-y-3">
       {inGameBootcampers.length > 0 ? (
@@ -267,20 +330,28 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                   <span className="text-xs text-gray-500">
                     Started {formatDistanceToNow(new Date(game.startedAt), { addSuffix: true })}
                   </span>
-                  {self && (
-                    <span className="flex items-center gap-1 text-xs text-blue-400 font-semibold">
-                      Playing:
-                      {self.championName && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={getChampionIconUrl(self.championName)}
-                          alt={self.championName}
-                          className="w-5 h-5 rounded-full border border-gray-700 bg-black"
-                        />
-                      )}
-                      {self.championName}
-                    </span>
-                  )}
+                  {(() => {
+                    const fetched = currentChampions[bootcamper.id];
+                    // Prioritize the current champion API data that's fetched immediately
+                    const champName = fetched?.championName || self?.championName || (self?.championId ? championNameCache[self.championId] : null);
+
+                    // Show "Playing:" if we have champion data from any source
+                    if (champName) {
+                      return (
+                        <span className="flex items-center gap-1 text-xs text-blue-400 font-semibold">
+                          Playing:
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={getChampionIconUrl(champName)}
+                            alt={champName}
+                            className="w-5 h-5 rounded-full border border-gray-700 bg-black"
+                          />
+                          {champName}
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
                   {!expandedByDefault && (
                     <button
                       className="ml-auto px-2 py-1 text-xs bg-gray-800 rounded hover:bg-gray-700 text-gray-300"
