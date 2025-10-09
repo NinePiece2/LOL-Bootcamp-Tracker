@@ -164,8 +164,9 @@ enum BootcamperStatus {
 }
 
 enum GameStatus {
-  live
-  completed
+  live         // Deprecated - kept for backward compatibility
+  in_progress  // Active game
+  completed    // Finished game
 }
 
 model UserLayout {

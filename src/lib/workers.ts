@@ -4,6 +4,7 @@ import { getRiotClient } from '@/lib/riot-api';
 import { getTwitchClient } from '@/lib/twitch-api';
 import { RiotRegion, REGION_TO_PLATFORM } from '@/lib/types';
 import { updateChampionPlayrates } from '@/lib/playrate-fetcher';
+import { identifyRoles } from '@/lib/role-identification';
 
 // Global queue and worker variables - initialized in initializeWorkers()
 let spectatorQueue: Queue;
@@ -148,9 +149,22 @@ async function checkSpectator(data: SpectatorJobData) {
           tier: enrichedParticipants[0]?.tier,
         });
 
+        // Identify roles for all participants
+        console.log(`🎯 Identifying roles for ${enrichedParticipants.length} participants...`);
+        const roleAssignments = await identifyRoles(enrichedParticipants);
+        
+        // Add inferred roles to participants
+        const participantsWithRoles = enrichedParticipants.map(p => {
+          const role = roleAssignments.get(p.puuid) || 'MIDDLE';
+          return {
+            ...p,
+            inferredRole: role,
+          };
+        });
+
         const enrichedMatchData = {
           ...activeGame,
-          participants: enrichedParticipants,
+          participants: participantsWithRoles,
         };
 
         // Upsert the game record with enriched data for NEW games
@@ -175,12 +189,12 @@ async function checkSpectator(data: SpectatorJobData) {
               riotGameId: activeGame.gameId.toString(),
               bootcamperId,
               startedAt: new Date(activeGame.gameStartTime),
-              status: 'live',
+              status: 'in_progress',
               // @ts-expect-error - Prisma JSON type differences between local and Docker
               matchData: enrichedMatchData, // Store enriched lobby info
             },
             update: {
-              status: 'live',
+              status: 'in_progress',
               // @ts-expect-error - Prisma JSON type differences between local and Docker
               matchData: enrichedMatchData, // Update enriched lobby info only for new games
             },
@@ -220,7 +234,7 @@ async function checkSpectator(data: SpectatorJobData) {
             where: {
               riotGameId: bootcamper.lastGameId,
               bootcamperId,
-              status: 'live',
+              status: { in: ['live', 'in_progress'] }, // Handle both old and new status values
             },
             data: {
               status: 'completed',
@@ -1003,10 +1017,9 @@ async function syncBootcampersWithJobs() {
     for (const bootcamper of bootcampers) {
       if (!bootcamper.puuid) continue;
 
-      // Check if spectator job exists in repeatable jobs
-      // BullMQ repeatable jobs have a 'name' field that matches the job name we passed
-      const expectedJobName = `check-${bootcamper.id}`;
-      const hasSpectatorJob = spectatorRepeatableJobs.some(j => j.name === expectedJobName);
+      // Check if spectator job exists by jobId
+      const expectedJobId = `spectator-${bootcamper.id}`;
+      const hasSpectatorJob = spectatorRepeatableJobs.some(j => j.id === expectedJobId);
       
       if (!hasSpectatorJob) {
         console.log(`  ➕ Adding missing jobs for ${bootcamper.summonerName}`);

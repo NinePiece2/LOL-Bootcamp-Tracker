@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { getChampionNameById } from "@/lib/utils";
-import { identifyRoles } from "@/lib/role-identification";
 import { GameProfileLinks } from "@/components/game-profile-links";
 
 interface Participant {
@@ -77,27 +76,8 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
         inGameBootcampers.map(async (bootcamper) => {
           const game = bootcamper.games?.[0];
           if (!game?.matchData?.participants) {
-            console.warn('No matchData or participants for', bootcamper.summonerName);
             return bootcamper;
           }
-
-          console.log('Raw participants from DB:', game.matchData.participants.map((p: Participant) => {
-            const name = p.riotId || p.summonerName || p.riotIdGameName || 'Unknown';
-            return {
-              name,
-              riotId: p.riotId,
-              summonerName: p.summonerName,
-              riotIdGameName: p.riotIdGameName,
-              riotIdTagline: p.riotIdTagline,
-              rank: p.rank,
-              tier: p.tier,
-              championId: p.championId,
-              spell1: p.spell1Id,
-              spell2: p.spell2Id,
-              teamId: p.teamId,
-              puuid: p.puuid?.substring(0, 8) + '...',
-            };
-          }));
 
           // Enrich participants with champion names and detect roles
           const enrichedParticipants = await Promise.all(
@@ -110,48 +90,46 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
               }
               
               // IMPORTANT: Preserve all existing data including rank
-              const enriched = {
+              return {
                 ...p, // This includes rank, tier, division, leaguePoints from workers
                 championName: championNameCache[p.championId] || null,
               };
-              
-              const playerName = p.riotId || p.summonerName || p.riotIdGameName || 'Unknown';
-              console.log(`Participant ${playerName}:`, {
-                rank: enriched.rank,
-                tier: enriched.tier,
-                hasRankData: !!p.rank,
-                championName: enriched.championName,
-              });
-              
-              return enriched;
             })
           );
 
-          // Detect roles for all participants using play rate algorithm (~90-95% accuracy)
-          console.log('🎯 Starting role identification...');
+          // Call API to identify roles (server-side with champion playrate data)
+          let participantsWithRoles = enrichedParticipants;
           
-          // Use the playrate-based role identification system
-          const roleAssignments = await identifyRoles(enrichedParticipants);
-          
-          const participantsWithRoles = enrichedParticipants.map(p => {
-            const role = roleAssignments.get(p.puuid) || 'MIDDLE';
-            const playerName = p.riotId || p.summonerName || p.riotIdGameName || 'Unknown';
-            console.log(`✓ ${playerName} (${p.championName || 'Unknown'}): ${role}`);
-            
-            return {
+          try {
+            const response = await fetch('/api/identify-roles', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ participants: enrichedParticipants }),
+            });
+
+            if (response.ok) {
+              const { roles } = await response.json();
+              
+              participantsWithRoles = enrichedParticipants.map(p => ({
+                ...p,
+                inferredRole: roles[p.puuid] || 'MIDDLE',
+              }));
+            } else {
+              console.error('Failed to identify roles:', response.statusText);
+              // Fallback: use inferredRole from matchData if available
+              participantsWithRoles = enrichedParticipants.map(p => ({
+                ...p,
+                inferredRole: p.inferredRole || 'MIDDLE',
+              }));
+            }
+          } catch (error) {
+            console.error('Error calling role identification API:', error);
+            // Fallback: use inferredRole from matchData if available
+            participantsWithRoles = enrichedParticipants.map(p => ({
               ...p,
-              inferredRole: role,
-            };
-          });
-          
-          // Log final role distribution
-          console.log('Final role distribution:', participantsWithRoles.reduce((acc: Record<string, Record<string, number>>, p: Participant) => {
-            const team = p.teamId === 100 ? 'Blue' : 'Red';
-            if (!acc[team]) acc[team] = {};
-            const role = p.inferredRole || 'UNKNOWN';
-            acc[team][role] = (acc[team][role] || 0) + 1;
-            return acc;
-          }, {}));
+              inferredRole: p.inferredRole || 'MIDDLE',
+            }));
+          }
 
           return {
             ...bootcamper,
@@ -176,19 +154,7 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
       {enrichedBootcampers.length > 0 ? (
         enrichedBootcampers.map((bootcamper) => {
           const game = bootcamper.games?.[0];
-          console.log("Game data for", bootcamper.summonerName, ":", game);
-          console.log("matchData:", game?.matchData);
           const lobby = game?.matchData?.participants || [];
-          console.log("Lobby participants:", lobby);
-          if (lobby.length > 0) {
-            console.log("Sample participant rank data:", {
-              summonerName: lobby[0].summonerName,
-              rank: lobby[0].rank,
-              tier: lobby[0].tier,
-              division: lobby[0].division,
-              leaguePoints: lobby[0].leaguePoints,
-            });
-          }
           const self = lobby.find((p: Participant) => 
             p.summonerName === bootcamper.summonerName || 
             p.riotIdGameName === bootcamper.summonerName ||
