@@ -5,7 +5,6 @@ import { getRiotClient } from '@/lib/riot-api';
 import { getTwitchClient } from '@/lib/twitch-api';
 import { RiotRegion } from '@/lib/types';
 import { auth } from '@/lib/auth';
-import { getQueues, queueRankUpdate, addBootcamperToPeriodicJobs } from '@/lib/workers';
 
 const createBootcamperSchema = z.object({
   name: z.string().optional(),
@@ -208,40 +207,9 @@ export async function POST(request: NextRequest) {
       userIdFromData: userId 
     });
 
-    // Schedule initial rank checks AND add to periodic jobs
-    try {
-      if (bootcamper.puuid) {
-        // Queue immediate current rank update
-        await queueRankUpdate(bootcamper.id, bootcamper.puuid, bootcamper.region as RiotRegion);
-        
-        // Queue immediate peak rank check
-        const { rankQueue } = getQueues();
-        if (rankQueue) {
-          await rankQueue.add(
-            'check-rank-after-game',
-            {
-              bootcamperId: bootcamper.id,
-              puuid: bootcamper.puuid,
-              region: bootcamper.region as RiotRegion,
-            },
-            { delay: 2500 } // Wait 2.5 seconds before initial peak rank check
-          );
-        }
-        console.log(`📊 Scheduled initial rank checks for ${bootcamper.summonerName}`);
-
-        // Add to all periodic jobs (spectator, name updates, rank checks, twitch)
-        await addBootcamperToPeriodicJobs(
-          bootcamper.id,
-          bootcamper.puuid,
-          bootcamper.region as RiotRegion,
-          bootcamper.twitchUserId || undefined,
-          bootcamper.twitchLogin || undefined
-        );
-      }
-    } catch (err) {
-      // Don't fail bootcamper creation if job scheduling fails
-      console.error('Failed to schedule jobs for new bootcamper:', err);
-    }
+    // Note: Worker jobs will be automatically added by the periodic sync in the worker process
+    // This happens within 10 seconds of creation, then checks every 2 minutes
+    console.log(`✅ Bootcamper created. Worker process will pick it up within 10 seconds.`);
 
     return NextResponse.json(bootcamper, { status: 201 });
   } catch (error) {

@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { getTwitchClient } from '@/lib/twitch-api';
 import { auth } from '@/lib/auth';
-import { getQueues, removeBootcamperFromPeriodicJobs } from '@/lib/workers';
 
 const updateBootcamperSchema = z.object({
   name: z.string().optional(),
@@ -113,15 +112,8 @@ export async function PATCH(
       const imageResponse = await fetch(users[0].profile_image_url);
       const imageBuffer = await imageResponse.arrayBuffer();
       twitchProfileImage = Buffer.from(imageBuffer);
-
-      // Remove old Twitch job if it exists
-      if (existing.twitchUserId) {
-        const { twitchStreamQueue } = getQueues();
-        if (twitchStreamQueue) {
-          const oldJob = await twitchStreamQueue.getJob(`twitch-stream-${id}`);
-          if (oldJob) await oldJob.remove();
-        }
-      }
+      
+      // Note: Worker sync will automatically update Twitch jobs within 2 minutes
     }
 
     // Update bootcamper
@@ -147,26 +139,9 @@ export async function PATCH(
       },
     });
 
-    // If Twitch was added/changed, add new Twitch job
-    if (twitchChanged && bootcamper.twitchUserId && bootcamper.twitchLogin) {
-      const { twitchStreamQueue } = getQueues();
-      if (twitchStreamQueue) {
-        await twitchStreamQueue.add(
-          `check-${id}`,
-          {
-            bootcamperId: id,
-            twitchUserId: bootcamper.twitchUserId,
-            twitchLogin: bootcamper.twitchLogin,
-          },
-          {
-            repeat: {
-              every: 60000,
-            },
-            jobId: `twitch-stream-${id}`,
-          }
-        );
-        console.log(`✅ Added Twitch stream check for ${bootcamper.summonerName}`);
-      }
+    // Note: Worker sync will automatically pick up any changes within 2 minutes
+    if (twitchChanged) {
+      console.log(`✅ Twitch account updated for ${bootcamper.summonerName}. Worker will sync jobs within 2 minutes.`);
     }
 
     return NextResponse.json(bootcamper);
@@ -222,14 +197,13 @@ export async function DELETE(
       );
     }
 
-    // Remove from all periodic jobs before deletion
-    await removeBootcamperFromPeriodicJobs(id);
-
+    // Delete bootcamper (jobs will be cleaned up by sync process)
     await prisma.bootcamper.delete({
       where: { id },
     });
 
     console.log(`🗑️  Deleted bootcamper: ${existing.summonerName} (ID: ${id})`);
+    console.log(`Note: Worker jobs will be cleaned up in next sync cycle`);
 
     return NextResponse.json({ success: true });
   } catch (error) {

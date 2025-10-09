@@ -1189,7 +1189,7 @@ export default function Home() {
           <Tabs defaultValue="all" className="w-full">
             <TabsList className="bg-gray-900 border border-gray-800">
               <TabsTrigger value="all" className="data-[state=active]:bg-gray-800 cursor-pointer">All</TabsTrigger>
-              <TabsTrigger value="live" className="data-[state=active]:bg-gray-800 cursor-pointer">Live</TabsTrigger>
+              <TabsTrigger value="live" className="data-[state=active]:bg-gray-800 cursor-pointer">In Game</TabsTrigger>
               <TabsTrigger value="streaming" className="data-[state=active]:bg-gray-800 cursor-pointer">Streaming</TabsTrigger>
             </TabsList>
             <TabsContent value="all" className="mt-4">

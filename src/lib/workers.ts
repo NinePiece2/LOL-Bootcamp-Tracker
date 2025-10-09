@@ -689,7 +689,7 @@ async function updateCurrentRank(data: RankJobData) {
       data: updates,
     });
 
-    console.log(`✅ Updated current rank for ${bootcamper.summonerName}`);
+    console.log(`✅ Updated current rank for: ${bootcamper.summonerName}`);
   } catch (error) {
     // Better error handling - don't overwrite existing rank data on API errors
     if (error instanceof Error) {
@@ -935,6 +935,160 @@ export async function schedulePeriodicRankChecks() {
         jobId: `periodic-peak-rank-${bootcamper.id}`, // Unique job ID to avoid duplicates
       }
     );
+  }
+}
+
+/**
+ * Sync bootcampers with periodic jobs
+ * Adds any bootcampers that don't have jobs scheduled yet
+ * Removes jobs for bootcampers that no longer exist
+ * This runs periodically to catch bootcampers added/deleted via API routes
+ */
+async function syncBootcampersWithJobs() {
+  if (!spectatorQueue || !summonerNameQueue || !rankQueue || !twitchStreamQueue) {
+    console.warn('Queues not initialized. Skipping bootcamper sync.');
+    return;
+  }
+
+  try {
+    // Get all active bootcampers
+    const bootcampers = await prisma.bootcamper.findMany({
+      where: {
+        startDate: { lte: new Date() },
+        OR: [
+          { plannedEndDate: { gte: new Date() } },
+          { actualEndDate: { gte: new Date() } },
+        ],
+      },
+    });
+
+    console.log(`🔄 Syncing ${bootcampers.length} active bootcampers with jobs...`);
+    let addedCount = 0;
+    let removedCount = 0;
+
+    const bootcamperIds = new Set(bootcampers.map(b => b.id));
+
+    // Check for orphaned jobs (bootcampers that were deleted)
+    const allSpectatorJobs = await spectatorQueue.getRepeatableJobs();
+    for (const job of allSpectatorJobs) {
+      const bootcamperId = job.id?.replace('spectator-', '');
+      if (bootcamperId && !bootcamperIds.has(bootcamperId)) {
+        console.log(`  🗑️  Removing orphaned jobs for deleted bootcamper ${bootcamperId}`);
+        
+        // Remove all job types for this bootcamper
+        await spectatorQueue.removeRepeatableByKey(job.key);
+        
+        const nameJob = await summonerNameQueue.getRepeatableJobs();
+        const nameJobToRemove = nameJob.find(j => j.id === `summoner-name-${bootcamperId}`);
+        if (nameJobToRemove) await summonerNameQueue.removeRepeatableByKey(nameJobToRemove.key);
+        
+        const rankJobs = await rankQueue.getRepeatableJobs();
+        const currentRankJob = rankJobs.find(j => j.id === `periodic-current-rank-${bootcamperId}`);
+        const peakRankJob = rankJobs.find(j => j.id === `periodic-peak-rank-${bootcamperId}`);
+        if (currentRankJob) await rankQueue.removeRepeatableByKey(currentRankJob.key);
+        if (peakRankJob) await rankQueue.removeRepeatableByKey(peakRankJob.key);
+        
+        const twitchJobs = await twitchStreamQueue.getRepeatableJobs();
+        const twitchJob = twitchJobs.find(j => j.id === `twitch-stream-${bootcamperId}`);
+        if (twitchJob) await twitchStreamQueue.removeRepeatableByKey(twitchJob.key);
+        
+        removedCount++;
+      }
+    }
+
+    // Add missing jobs for active bootcampers
+    for (const bootcamper of bootcampers) {
+      if (!bootcamper.puuid) continue;
+
+      // Check if spectator job exists
+      const spectatorJob = await spectatorQueue.getJob(`spectator-${bootcamper.id}`);
+      
+      if (!spectatorJob) {
+        console.log(`  ➕ Adding missing jobs for ${bootcamper.summonerName}`);
+        
+        // Add spectator check
+        await spectatorQueue.add(
+          `check-${bootcamper.id}`,
+          {
+            bootcamperId: bootcamper.id,
+            puuid: bootcamper.puuid,
+            region: bootcamper.region as RiotRegion,
+          },
+          {
+            repeat: { every: 60000 },
+            jobId: `spectator-${bootcamper.id}`,
+          }
+        );
+
+        // Add summoner name check
+        await summonerNameQueue.add(
+          `check-${bootcamper.id}`,
+          {
+            bootcamperId: bootcamper.id,
+            puuid: bootcamper.puuid,
+            region: bootcamper.region as RiotRegion,
+          },
+          {
+            repeat: { every: 3600000 },
+            jobId: `summoner-name-${bootcamper.id}`,
+          }
+        );
+
+        // Add current rank check
+        await rankQueue.add(
+          'update-current-rank',
+          {
+            bootcamperId: bootcamper.id,
+            puuid: bootcamper.puuid,
+            region: bootcamper.region as RiotRegion,
+          },
+          {
+            repeat: { every: 300000 },
+            jobId: `periodic-current-rank-${bootcamper.id}`,
+          }
+        );
+
+        // Add peak rank check
+        await rankQueue.add(
+          'check-rank-after-game',
+          {
+            bootcamperId: bootcamper.id,
+            puuid: bootcamper.puuid,
+            region: bootcamper.region as RiotRegion,
+          },
+          {
+            repeat: { every: 300000 },
+            jobId: `periodic-peak-rank-${bootcamper.id}`,
+          }
+        );
+
+        // Add Twitch check if applicable
+        if (bootcamper.twitchUserId && bootcamper.twitchLogin) {
+          await twitchStreamQueue.add(
+            `check-${bootcamper.id}`,
+            {
+              bootcamperId: bootcamper.id,
+              twitchUserId: bootcamper.twitchUserId,
+              twitchLogin: bootcamper.twitchLogin,
+            },
+            {
+              repeat: { every: 60000 },
+              jobId: `twitch-stream-${bootcamper.id}`,
+            }
+          );
+        }
+
+        addedCount++;
+      }
+    }
+
+    if (addedCount > 0 || removedCount > 0) {
+      console.log(`✅ Sync complete: Added ${addedCount}, Removed ${removedCount}`);
+    } else {
+      console.log(`✅ All bootcampers in sync with jobs`);
+    }
+  } catch (error) {
+    console.error('❌ Error syncing bootcampers with jobs:', error);
   }
 }
 
@@ -1227,6 +1381,16 @@ export async function initializeWorkers() {
   
   console.log('Worker system initialized successfully');
   
+  // Start periodic bootcamper sync (every 2 minutes)
+  setInterval(async () => {
+    await syncBootcampersWithJobs();
+  }, 120000); // 2 minutes
+  
+  // Run initial sync after 10 seconds
+  setTimeout(async () => {
+    await syncBootcampersWithJobs();
+  }, 10000);
+  
   // Start periodic status logging
   startStatusLogger();
 }
@@ -1321,153 +1485,6 @@ export async function shutdownWorkers() {
   if (playrateQueue) await playrateQueue.close();
   
   console.log('Worker system shut down');
-}
-
-/**
- * Add a new bootcamper to all periodic jobs
- * Called when a bootcamper is created
- */
-export async function addBootcamperToPeriodicJobs(
-  bootcamperId: string,
-  puuid: string,
-  region: RiotRegion,
-  twitchUserId?: string,
-  twitchLogin?: string
-) {
-  if (!spectatorQueue || !summonerNameQueue || !rankQueue) {
-    console.warn('Workers not initialized. Cannot add bootcamper to periodic jobs.');
-    return;
-  }
-
-  console.log(`📋 Adding bootcamper ${bootcamperId} to all periodic jobs...`);
-
-  // Add to spectator checks (every 60 seconds)
-  await spectatorQueue.add(
-    `check-${bootcamperId}`,
-    {
-      bootcamperId,
-      puuid,
-      region,
-    },
-    {
-      repeat: {
-        every: 60000,
-      },
-      jobId: `spectator-${bootcamperId}`,
-    }
-  );
-  console.log(`  ✓ Added to spectator checks`);
-
-  // Add to summoner name checks (every hour)
-  await summonerNameQueue.add(
-    `check-${bootcamperId}`,
-    {
-      bootcamperId,
-      puuid,
-      region,
-    },
-    {
-      repeat: {
-        every: 3600000,
-      },
-      jobId: `summoner-name-${bootcamperId}`,
-    }
-  );
-  console.log(`  ✓ Added to summoner name checks`);
-
-  // Add to current rank checks (every 5 minutes)
-  await rankQueue.add(
-    'update-current-rank',
-    {
-      bootcamperId,
-      puuid,
-      region,
-    },
-    {
-      repeat: {
-        every: 300000,
-      },
-      jobId: `periodic-current-rank-${bootcamperId}`,
-    }
-  );
-  console.log(`  ✓ Added to current rank checks`);
-
-  // Add to peak rank checks (every 5 minutes)
-  await rankQueue.add(
-    'check-rank-after-game',
-    {
-      bootcamperId,
-      puuid,
-      region,
-    },
-    {
-      repeat: {
-        every: 300000,
-      },
-      jobId: `periodic-peak-rank-${bootcamperId}`,
-    }
-  );
-  console.log(`  ✓ Added to peak rank checks`);
-
-  // Add to Twitch stream checks if Twitch account exists (every 60 seconds)
-  if (twitchUserId && twitchLogin && twitchStreamQueue) {
-    await twitchStreamQueue.add(
-      `check-${bootcamperId}`,
-      {
-        bootcamperId,
-        twitchUserId,
-        twitchLogin,
-      },
-      {
-        repeat: {
-          every: 60000,
-        },
-        jobId: `twitch-stream-${bootcamperId}`,
-      }
-    );
-    console.log(`  ✓ Added to Twitch stream checks`);
-  }
-
-  console.log(`✅ Bootcamper ${bootcamperId} added to all periodic jobs`);
-}
-
-/**
- * Remove a bootcamper from all periodic jobs
- * Called when a bootcamper is deleted or bootcamp ends
- */
-export async function removeBootcamperFromPeriodicJobs(bootcamperId: string) {
-  if (!spectatorQueue || !summonerNameQueue || !rankQueue || !twitchStreamQueue) {
-    console.warn('Workers not initialized. Cannot remove bootcamper from periodic jobs.');
-    return;
-  }
-
-  console.log(`🗑️  Removing bootcamper ${bootcamperId} from all periodic jobs...`);
-
-  try {
-    // Remove from spectator checks
-    const spectatorJob = await spectatorQueue.getJob(`spectator-${bootcamperId}`);
-    if (spectatorJob) await spectatorJob.remove();
-
-    // Remove from summoner name checks
-    const nameJob = await summonerNameQueue.getJob(`summoner-name-${bootcamperId}`);
-    if (nameJob) await nameJob.remove();
-
-    // Remove from current rank checks
-    const currentRankJob = await rankQueue.getJob(`periodic-current-rank-${bootcamperId}`);
-    if (currentRankJob) await currentRankJob.remove();
-
-    // Remove from peak rank checks
-    const peakRankJob = await rankQueue.getJob(`periodic-peak-rank-${bootcamperId}`);
-    if (peakRankJob) await peakRankJob.remove();
-
-    // Remove from Twitch stream checks
-    const twitchJob = await twitchStreamQueue.getJob(`twitch-stream-${bootcamperId}`);
-    if (twitchJob) await twitchJob.remove();
-
-    console.log(`✅ Bootcamper ${bootcamperId} removed from all periodic jobs`);
-  } catch (error) {
-    console.error(`Error removing bootcamper ${bootcamperId} from periodic jobs:`, error);
-  }
 }
 
 // Export queues for external use (after initialization)
