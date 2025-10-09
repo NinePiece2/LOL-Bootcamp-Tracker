@@ -270,7 +270,11 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         games: {
-          where: { status: 'live' },
+          where: { 
+            status: { 
+              in: ['live', 'in_progress'] // Support both old and new status values
+            } 
+          },
           orderBy: { startedAt: 'desc' },
           take: 1,
         },

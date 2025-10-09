@@ -1012,19 +1012,26 @@ async function syncBootcampersWithJobs() {
 
     // Get all repeatable jobs once to avoid repeated calls
     const spectatorRepeatableJobs = await spectatorQueue.getRepeatableJobs();
+    const nameRepeatableJobs = await summonerNameQueue.getRepeatableJobs();
+    const rankRepeatableJobs = await rankQueue.getRepeatableJobs();
+    const twitchRepeatableJobs = await twitchStreamQueue.getRepeatableJobs();
 
     // Add missing jobs for active bootcampers
     for (const bootcamper of bootcampers) {
       if (!bootcamper.puuid) continue;
 
-      // Check if spectator job exists by jobId
-      const expectedJobId = `spectator-${bootcamper.id}`;
-      const hasSpectatorJob = spectatorRepeatableJobs.some(j => j.id === expectedJobId);
+      // Check which jobs exist for this bootcamper
+      const hasSpectatorJob = spectatorRepeatableJobs.some(j => j.id === `spectator-${bootcamper.id}`);
+      const hasNameJob = nameRepeatableJobs.some(j => j.id === `summoner-name-${bootcamper.id}`);
+      const hasCurrentRankJob = rankRepeatableJobs.some(j => j.id === `periodic-current-rank-${bootcamper.id}`);
+      const hasPeakRankJob = rankRepeatableJobs.some(j => j.id === `periodic-peak-rank-${bootcamper.id}`);
+      const hasTwitchJob = twitchRepeatableJobs.some(j => j.id === `twitch-stream-${bootcamper.id}`);
       
+      const missingJobs: string[] = [];
+      
+      // Add spectator check if missing
       if (!hasSpectatorJob) {
-        console.log(`  ➕ Adding missing jobs for ${bootcamper.summonerName}`);
-        
-        // Add spectator check
+        missingJobs.push('spectator');
         await spectatorQueue.add(
           `check-${bootcamper.id}`,
           {
@@ -1037,8 +1044,11 @@ async function syncBootcampersWithJobs() {
             jobId: `spectator-${bootcamper.id}`,
           }
         );
+      }
 
-        // Add summoner name check
+      // Add summoner name check if missing
+      if (!hasNameJob) {
+        missingJobs.push('name');
         await summonerNameQueue.add(
           `check-${bootcamper.id}`,
           {
@@ -1051,8 +1061,11 @@ async function syncBootcampersWithJobs() {
             jobId: `summoner-name-${bootcamper.id}`,
           }
         );
+      }
 
-        // Add current rank check
+      // Add current rank check if missing
+      if (!hasCurrentRankJob) {
+        missingJobs.push('current-rank');
         await rankQueue.add(
           'update-current-rank',
           {
@@ -1065,8 +1078,11 @@ async function syncBootcampersWithJobs() {
             jobId: `periodic-current-rank-${bootcamper.id}`,
           }
         );
+      }
 
-        // Add peak rank check
+      // Add peak rank check if missing
+      if (!hasPeakRankJob) {
+        missingJobs.push('peak-rank');
         await rankQueue.add(
           'check-rank-after-game',
           {
@@ -1079,23 +1095,27 @@ async function syncBootcampersWithJobs() {
             jobId: `periodic-peak-rank-${bootcamper.id}`,
           }
         );
+      }
 
-        // Add Twitch check if applicable
-        if (bootcamper.twitchUserId && bootcamper.twitchLogin) {
-          await twitchStreamQueue.add(
-            `check-${bootcamper.id}`,
-            {
-              bootcamperId: bootcamper.id,
-              twitchUserId: bootcamper.twitchUserId,
-              twitchLogin: bootcamper.twitchLogin,
-            },
-            {
-              repeat: { every: 60000 },
-              jobId: `twitch-stream-${bootcamper.id}`,
-            }
-          );
-        }
+      // Add Twitch check if applicable and missing
+      if (bootcamper.twitchUserId && bootcamper.twitchLogin && !hasTwitchJob) {
+        missingJobs.push('twitch');
+        await twitchStreamQueue.add(
+          `check-${bootcamper.id}`,
+          {
+            bootcamperId: bootcamper.id,
+            twitchUserId: bootcamper.twitchUserId,
+            twitchLogin: bootcamper.twitchLogin,
+          },
+          {
+            repeat: { every: 60000 },
+            jobId: `twitch-stream-${bootcamper.id}`,
+          }
+        );
+      }
 
+      if (missingJobs.length > 0) {
+        console.log(`  ➕ Adding missing jobs for ${bootcamper.summonerName}: ${missingJobs.join(', ')}`);
         addedCount++;
       }
     }
@@ -1519,6 +1539,11 @@ export async function initializeWorkers() {
   setTimeout(async () => {
     await syncBootcampersWithJobs();
   }, 10000);
+  
+  // Start periodic stale game cleanup (every 5 minutes)
+  setInterval(async () => {
+    await cleanupStaleGames();
+  }, 300000); // 5 minutes
   
   // Start periodic status logging
   startStatusLogger();
