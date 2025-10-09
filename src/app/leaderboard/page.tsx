@@ -838,7 +838,7 @@ export default function LeaderboardPage() {
             <ColumnDirective
               field="summonerName"
               headerText="Player"
-              width="250"
+              width="270"
               textAlign="Center"
               template={summonerTemplate}
             />
