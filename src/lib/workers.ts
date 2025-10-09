@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { getRiotClient } from '@/lib/riot-api';
 import { getTwitchClient } from '@/lib/twitch-api';
 import { RiotRegion, REGION_TO_PLATFORM } from '@/lib/types';
+import { updateChampionPlayrates } from '@/lib/playrate-fetcher';
 
 // Global queue and worker variables - initialized in initializeWorkers()
 let spectatorQueue: Queue;
@@ -10,11 +11,13 @@ let matchDataQueue: Queue;
 let twitchStreamQueue: Queue;
 let summonerNameQueue: Queue;
 let rankQueue: Queue;
+let playrateQueue: Queue;
 let spectatorWorker: Worker;
 let matchDataWorker: Worker;
 let twitchStreamWorker: Worker;
 let summonerNameWorker: Worker;
 let rankWorker: Worker;
+let playrateWorker: Worker;
 
 interface SpectatorJobData {
   bootcamperId: string;
@@ -992,6 +995,7 @@ export async function initializeWorkers() {
   twitchStreamQueue = new Queue('twitch-stream-checks', { connection: connectionConfig });
   summonerNameQueue = new Queue('summoner-name-updates', { connection: connectionConfig });
   rankQueue = new Queue('rank-checks', { connection: connectionConfig });
+  playrateQueue = new Queue('playrate-updates', { connection: connectionConfig });
   
   // Create workers with individual connections
   console.log('Creating workers...');
@@ -1052,6 +1056,19 @@ export async function initializeWorkers() {
     {
       connection: connectionConfig,
       concurrency: 3,
+    }
+  );
+
+  playrateWorker = new Worker(
+    'playrate-updates',
+    async () => {
+      console.log('🎮 Starting champion playrate update...');
+      await updateChampionPlayrates();
+      console.log('✅ Champion playrate update completed');
+    },
+    {
+      connection: connectionConfig,
+      concurrency: 1, // Only one playrate update at a time
     }
   );
   
@@ -1136,6 +1153,22 @@ export async function initializeWorkers() {
       console.error('❌ Rank worker error:', err.message);
     }
   });
+
+  playrateWorker.on('completed', () => {
+    console.log('✅ Champion playrate update job completed');
+  });
+
+  playrateWorker.on('failed', (job, err) => {
+    if (!err.message.includes('Connection is closed')) {
+      console.error(`❌ Playrate update failed:`, err.message);
+    }
+  });
+
+  playrateWorker.on('error', (err) => {
+    if (!err.message.includes('Connection is closed')) {
+      console.error('❌ Playrate worker error:', err.message);
+    }
+  });
   
   // Clear old jobs and reschedule with updated data
   console.log('Clearing old spectator jobs...');
@@ -1161,6 +1194,36 @@ export async function initializeWorkers() {
 
   // Schedule periodic rank checks (runs every 5 minutes)
   await schedulePeriodicRankChecks();
+
+  // Schedule champion playrate updates (runs daily at midnight and on startup)
+  console.log('Scheduling champion playrate updates...');
+  
+  // Clear old playrate jobs
+  await playrateQueue.obliterate({ force: true });
+  
+  // Add initial playrate update (runs 5 seconds after startup)
+  await playrateQueue.add(
+    'update-playrates',
+    {},
+    {
+      delay: 5000, // 5 second delay
+      jobId: 'initial-playrate-update',
+    }
+  );
+  console.log('  ✓ Scheduled initial playrate update (5s delay)');
+  
+  // Add daily playrate update at midnight (00:00)
+  await playrateQueue.add(
+    'update-playrates',
+    {},
+    {
+      repeat: {
+        pattern: '0 0 * * *', // Every day at midnight
+      },
+      jobId: 'daily-playrate-update',
+    }
+  );
+  console.log('  ✓ Scheduled daily playrate update (midnight)');
   
   console.log('Worker system initialized successfully');
   
@@ -1210,6 +1273,13 @@ function startStatusLogger() {
         const delayed = await rankQueue.getDelayed();
         console.log(`   Rank Queue: ${waiting.length} waiting, ${active.length} active, ${delayed.length} delayed`);
       }
+
+      if (playrateQueue) {
+        const waiting = await playrateQueue.getWaiting();
+        const active = await playrateQueue.getActive();
+        const delayed = await playrateQueue.getDelayed();
+        console.log(`   Playrate Queue: ${waiting.length} waiting, ${active.length} active, ${delayed.length} delayed`);
+      }
       
       // Check bootcamper count
       const bootcamperCount = await prisma.bootcamper.count({
@@ -1242,11 +1312,13 @@ export async function shutdownWorkers() {
   if (twitchStreamWorker) await twitchStreamWorker.close();
   if (summonerNameWorker) await summonerNameWorker.close();
   if (rankWorker) await rankWorker.close();
+  if (playrateWorker) await playrateWorker.close();
   if (spectatorQueue) await spectatorQueue.close();
   if (matchDataQueue) await matchDataQueue.close();
   if (twitchStreamQueue) await twitchStreamQueue.close();
   if (summonerNameQueue) await summonerNameQueue.close();
   if (rankQueue) await rankQueue.close();
+  if (playrateQueue) await playrateQueue.close();
   
   console.log('Worker system shut down');
 }
@@ -1259,6 +1331,7 @@ export function getQueues() {
     twitchStreamQueue,
     summonerNameQueue,
     rankQueue,
+    playrateQueue,
   };
 }
 
@@ -1269,5 +1342,6 @@ export function getWorkers() {
     twitchStreamWorker,
     summonerNameWorker,
     rankWorker,
+    playrateWorker,
   };
 }

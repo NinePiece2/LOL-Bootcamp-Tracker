@@ -131,7 +131,7 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
           console.log('🎯 Starting role identification...');
           
           // Use the playrate-based role identification system
-          const roleAssignments = identifyRoles(enrichedParticipants);
+          const roleAssignments = await identifyRoles(enrichedParticipants);
           
           const participantsWithRoles = enrichedParticipants.map(p => {
             const role = roleAssignments.get(p.puuid) || 'MIDDLE';

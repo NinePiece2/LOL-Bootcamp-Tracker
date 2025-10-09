@@ -178,3 +178,20 @@ model UserLayout {
 
   @@map("user_layouts")
 }
+
+model ChampionPlayrate {
+  id           String   @id @default(uuid())
+  championId   Int      @unique @map("champion_id")
+  championName String?  @map("champion_name")
+  topRate      Float    @default(0) @map("top_rate")
+  jungleRate   Float    @default(0) @map("jungle_rate")
+  midRate      Float    @default(0) @map("mid_rate")
+  adcRate      Float    @default(0) @map("adc_rate")
+  supportRate  Float    @default(0) @map("support_rate")
+  patch        String
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([championId])
+  @@map("champion_playrates")
+}
