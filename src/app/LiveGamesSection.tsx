@@ -68,18 +68,71 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
   onLobbyClick,
   expandedByDefault = false
 }) => {
-  const [enrichedBootcampers, setEnrichedBootcampers] = useState<Bootcamper[]>([]);
+  const [enrichedBootcampers, setEnrichedBootcampers] = useState<Map<string, Bootcamper>>(new Map());
+  const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
 
+  // Only enrich bootcampers that are expanded or expanded by default
   useEffect(() => {
     const enrichData = async () => {
+      // Determine which bootcampers need enrichment
+      const idsToEnrich = inGameBootcampers
+        .filter(bootcamper => {
+          const isExpanded = expandedByDefault || (expandedLobby?.[bootcamper.id] || false);
+          const alreadyEnriched = enrichedBootcampers.has(bootcamper.id);
+          const currentlyEnriching = enrichingIds.has(bootcamper.id);
+          return isExpanded && !alreadyEnriched && !currentlyEnriching;
+        })
+        .map(b => b.id);
+
+      if (idsToEnrich.length === 0) return;
+
+      // Mark these IDs as being enriched
+      setEnrichingIds(prev => new Set([...prev, ...idsToEnrich]));
+
+      // Enrich only the bootcampers that need it
+      const bootcampersToEnrich = inGameBootcampers.filter(b => idsToEnrich.includes(b.id));
+      
       const enriched = await Promise.all(
-        inGameBootcampers.map(async (bootcamper) => {
+        bootcampersToEnrich.map(async (bootcamper) => {
           const game = bootcamper.games?.[0];
           if (!game?.matchData?.participants) {
             return bootcamper;
           }
 
-          // Enrich participants with champion names and detect roles
+          // Check if participants already have roles from the database
+          const hasRoles = game.matchData.participants.some((p: Participant) => p.inferredRole);
+          
+          if (hasRoles) {
+            // Roles already stored in DB - just enrich with champion names
+            const enrichedParticipants = await Promise.all(
+              game.matchData.participants.map(async (p: Participant) => {
+                if (p.championId && !championNameCache[p.championId]) {
+                  const name = await getChampionNameById(p.championId);
+                  if (name) {
+                    championNameCache[p.championId] = name;
+                  }
+                }
+                
+                return {
+                  ...p,
+                  championName: championNameCache[p.championId] || null,
+                };
+              })
+            );
+
+            return {
+              ...bootcamper,
+              games: [{
+                ...game,
+                matchData: {
+                  ...game.matchData,
+                  participants: enrichedParticipants,
+                },
+              }],
+            };
+          }
+
+          // Fallback: roles not in DB (old games) - enrich with champion names and call API
           const enrichedParticipants = await Promise.all(
             game.matchData.participants.map(async (p: Participant) => {
               if (p.championId && !championNameCache[p.championId]) {
@@ -143,17 +196,34 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
           };
         })
       );
-      setEnrichedBootcampers(enriched);
+
+      // Update the enriched map
+      setEnrichedBootcampers(prev => {
+        const newMap = new Map(prev);
+        enriched.forEach(bootcamper => {
+          newMap.set(bootcamper.id, bootcamper);
+        });
+        return newMap;
+      });
+
+      // Remove from enriching set
+      setEnrichingIds(prev => {
+        const newSet = new Set(prev);
+        idsToEnrich.forEach(id => newSet.delete(id));
+        return newSet;
+      });
     };
 
     enrichData();
-  }, [inGameBootcampers]);
+  }, [inGameBootcampers, expandedLobby, expandedByDefault, enrichedBootcampers, enrichingIds]);
 
   return (
     <div className="space-y-3">
-      {enrichedBootcampers.length > 0 ? (
-        enrichedBootcampers.map((bootcamper) => {
-          const game = bootcamper.games?.[0];
+      {inGameBootcampers.length > 0 ? (
+        inGameBootcampers.map((bootcamper) => {
+          // Use enriched version if available, otherwise use original
+          const displayBootcamper = enrichedBootcampers.get(bootcamper.id) || bootcamper;
+          const game = displayBootcamper.games?.[0];
           const lobby = game?.matchData?.participants || [];
           const self = lobby.find((p: Participant) => 
             p.summonerName === bootcamper.summonerName || 

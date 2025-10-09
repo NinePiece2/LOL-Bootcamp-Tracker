@@ -268,7 +268,46 @@ export async function GET(request: NextRequest) {
 
     const bootcampers = await prisma.bootcamper.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        riotId: true,
+        summonerName: true,
+        summonerId: true,
+        puuid: true,
+        region: true,
+        twitchLogin: true,
+        twitchUserId: true,
+        // Exclude twitchProfileImage - only needed for leaderboard
+        role: true,
+        startDate: true,
+        plannedEndDate: true,
+        actualEndDate: true,
+        status: true,
+        lastGameId: true,
+        createdAt: true,
+        updatedAt: true,
+        name: true,
+        isDefault: true,
+        userId: true,
+        peakSoloTier: true,
+        peakSoloRank: true,
+        peakSoloLP: true,
+        peakFlexTier: true,
+        peakFlexRank: true,
+        peakFlexLP: true,
+        peakUpdatedAt: true,
+        currentSoloTier: true,
+        currentSoloRank: true,
+        currentSoloLP: true,
+        currentSoloWins: true,
+        currentSoloLosses: true,
+        currentFlexTier: true,
+        currentFlexRank: true,
+        currentFlexLP: true,
+        currentFlexWins: true,
+        currentFlexLosses: true,
+        rankUpdatedAt: true,
+        linkedToDefaultId: true,
         games: {
           where: { 
             status: { 
