@@ -229,13 +229,13 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                       // Define role order for sorting (using API position names)
                       const roleOrder = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
                       
-                      // Map API positions to display labels
-                      const roleDisplayNames: Record<string, string> = {
-                        'TOP': 'TOP',
-                        'JUNGLE': 'JG',
-                        'MIDDLE': 'MID',
-                        'BOTTOM': 'ADC',
-                        'UTILITY': 'SUP',
+                      // Map API positions to image filenames
+                      const roleToImageFile: Record<string, string> = {
+                        'TOP': 'top.png',
+                        'JUNGLE': 'jungle.png',
+                        'MIDDLE': 'middle.png',
+                        'BOTTOM': 'bottom.png',
+                        'UTILITY': 'support.png',
                       };
                       
                       const teamPlayers = lobby
@@ -256,19 +256,53 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                           <div className="space-y-1">
                             {teamPlayers.map((p: Participant) => {
                               console.log("Rendering player:", p);
-                              const isBootcamper = p.summonerName === bootcamper.summonerName || 
-                                                   p.riotIdGameName === bootcamper.summonerName ||
-                                                   p.riotId === bootcamper.riotId ||
-                                                   p.puuid === bootcamper.puuid;
-                              const displayName = p.riotId || 
-                                                   p.summonerName || 
-                                                   (p.riotIdGameName && p.riotIdTagline ? `${p.riotIdGameName}#${p.riotIdTagline}` : p.riotIdGameName) || 
-                                                   'Unknown';
+                              
+                              // Check if this participant is ANY bootcamper (not just the current one)
+                              const isBootcamper = inGameBootcampers.some(bc => 
+                                p.summonerName === bc.summonerName || 
+                                p.riotIdGameName === bc.summonerName ||
+                                p.riotId === bc.riotId ||
+                                p.puuid === bc.puuid
+                              );
+                              
+                              // Find the matching bootcamper to get their display name
+                              const matchingBootcamper = inGameBootcampers.find(bc => 
+                                p.summonerName === bc.summonerName || 
+                                p.riotIdGameName === bc.summonerName ||
+                                p.riotId === bc.riotId ||
+                                p.puuid === bc.puuid
+                              );
+                              
+                              // Format: Riot ID (Display Name) or just Riot ID/Summoner Name
+                              let displayName: string;
+                              if (matchingBootcamper) {
+                                // This is a bootcamper - show Riot ID (Display Name)
+                                displayName = matchingBootcamper.riotId 
+                                  ? (matchingBootcamper.name ? `${matchingBootcamper.riotId} (${matchingBootcamper.name})` : matchingBootcamper.riotId)
+                                  : (matchingBootcamper.name ? `${matchingBootcamper.summonerName} (${matchingBootcamper.name})` : matchingBootcamper.summonerName);
+                              } else {
+                                // Regular player - just show their name
+                                displayName = p.riotId || 
+                                             p.summonerName || 
+                                             (p.riotIdGameName && p.riotIdTagline ? `${p.riotIdGameName}#${p.riotIdTagline}` : p.riotIdGameName) || 
+                                             'Unknown';
+                              }
+                              
+                              const roleImage = roleToImageFile[p.inferredRole || 'TOP'] || 'unknown.png';
+                              
                               return (
                                 <div 
                                   key={p.puuid || p.summonerId || Math.random()} 
                                   className={`flex items-center gap-2 p-2 rounded ${isBootcamper ? 'bg-blue-900/30 border border-blue-700' : 'hover:bg-gray-900'}`}
                                 >
+                                  {/* Role Icon */}
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={`/positions/${roleImage}`}
+                                    alt={p.inferredRole || 'Unknown'}
+                                    className="w-5 h-5 flex-shrink-0"
+                                    title={p.inferredRole || 'Unknown'}
+                                  />
                                   {p.championName && (
                                     // eslint-disable-next-line @next/next/no-img-element
                                     <img
@@ -277,9 +311,6 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                                       className="w-6 h-6 rounded-full border border-gray-700 bg-black flex-shrink-0"
                                     />
                                   )}
-                                  <span className="text-xs text-gray-500 w-12 flex-shrink-0">
-                                    {roleDisplayNames[p.inferredRole || 'TOP'] || p.inferredRole || 'UNKNOWN'}
-                                  </span>
                                   <span className="font-medium text-white truncate flex-1">{displayName}</span>
                                   <GameProfileLinks 
                                     riotId={p.riotId || null}
@@ -287,7 +318,7 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                                     size="sm"
                                     className="flex-shrink-0"
                                   />
-                                  <div className="flex items-center gap-1 flex-shrink-0">
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
                                     {p.tier && getRankIconUrl(p.tier) && (
                                       // eslint-disable-next-line @next/next/no-img-element
                                       <img
@@ -309,9 +340,9 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                                       'text-gray-500'
                                     }`}>
                                       {p.tier && (p.tier === 'MASTER' || p.tier === 'GRANDMASTER' || p.tier === 'CHALLENGER') 
-                                        ? `${p.leaguePoints || 0} LP`
+                                        ? `${p.tier.charAt(0) + p.tier.slice(1).toLowerCase()} ${p.leaguePoints || 0} LP`
                                         : p.tier && p.division 
-                                          ? `${p.division} ${p.leaguePoints || 0} LP` 
+                                          ? `${p.tier.charAt(0) + p.tier.slice(1).toLowerCase()} ${p.division} ${p.leaguePoints || 0} LP` 
                                           : (p.rank || 'Unranked')}
                                     </span>
                                   </div>
