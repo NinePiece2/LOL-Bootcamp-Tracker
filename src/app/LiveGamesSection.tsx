@@ -452,7 +452,7 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                                     className="w-5 h-5 flex-shrink-0"
                                     title={p.inferredRole || 'Unknown'}
                                   />
-                                  {p.championName && (
+                                  {p.championId && (
                                     // eslint-disable-next-line @next/next/no-img-element
                                     <img
                                       src={getChampionIconUrl(p.championId)}
