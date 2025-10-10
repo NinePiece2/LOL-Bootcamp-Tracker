@@ -1,51 +1,90 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import sharp from 'sharp';
 
-// Use a lightweight local type for bootcamper with games to avoid Prisma helper type issues
-type BootcamperWithGames = {
-  id: string;
-  riotId: string | null;
-  summonerName: string;
-  name: string | null;
-  summonerId: string | null;
-  puuid: string | null;
-  region: string;
-  twitchLogin: string | null;
-  twitchUserId: string | null;
-  twitchProfileImage: Uint8Array | null;
-  role: string | null;
-  startDate: string | Date;
-  plannedEndDate: string | Date | null;
-  actualEndDate: string | Date | null;
-  status: string;
-  peakSoloTier: string | null;
-  peakSoloRank: string | null;
-  peakSoloLP: number | null;
-  peakFlexTier: string | null;
-  peakFlexRank: string | null;
-  peakFlexLP: number | null;
-  peakUpdatedAt: Date | null;
-  currentSoloTier: string | null;
-  currentSoloRank: string | null;
-  currentSoloLP: number | null;
-  currentSoloWins: number | null;
-  currentSoloLosses: number | null;
-  currentFlexTier: string | null;
-  currentFlexRank: string | null;
-  currentFlexLP: number | null;
-  currentFlexWins: number | null;
-  currentFlexLosses: number | null;
-  rankUpdatedAt: Date | null;
-  games: Array<{
-    id: string;
-    riotGameId: string;
-    bootcamperId: string;
-    startedAt: string | Date;
-    endedAt: string | Date | null;
-    status: string;
-  }>;
-};
+// // Use a lightweight local type for bootcamper with games to avoid Prisma helper type issues
+// type BootcamperWithGames = {
+//   id: string;
+//   riotId: string | null;
+//   summonerName: string;
+//   name: string | null;
+//   summonerId: string | null;
+//   puuid: string | null;
+//   region: string;
+//   twitchLogin: string | null;
+//   twitchUserId: string | null;
+//   twitchProfileImage: Uint8Array | null;
+//   role: string | null;
+//   startDate: string | Date;
+//   plannedEndDate: string | Date | null;
+//   actualEndDate: string | Date | null;
+//   status: string;
+//   peakSoloTier: string | null;
+//   peakSoloRank: string | null;
+//   peakSoloLP: number | null;
+//   peakFlexTier: string | null;
+//   peakFlexRank: string | null;
+//   peakFlexLP: number | null;
+//   peakUpdatedAt: Date | null;
+//   currentSoloTier: string | null;
+//   currentSoloRank: string | null;
+//   currentSoloLP: number | null;
+//   currentSoloWins: number | null;
+//   currentSoloLosses: number | null;
+//   currentFlexTier: string | null;
+//   currentFlexRank: string | null;
+//   currentFlexLP: number | null;
+//   currentFlexWins: number | null;
+//   currentFlexLosses: number | null;
+//   rankUpdatedAt: Date | null;
+//   games: Array<{
+//     id: string;
+//     riotGameId: string;
+//     bootcamperId: string;
+//     startedAt: string | Date;
+//     endedAt: string | Date | null;
+//     status: string;
+//   }>;
+// };
+
+// Cache for compressed images
+const imageCache = new Map<string, string>();
+
+/**
+ * Compress and cache Twitch profile image
+ */
+async function compressProfileImage(imageBuffer: Uint8Array, bootcamperId: string): Promise<string | null> {
+  try {
+    // Check cache first
+    if (imageCache.has(bootcamperId)) {
+      return imageCache.get(bootcamperId)!;
+    }
+
+    // Compress image to 64x64 WebP with quality 80
+    const compressedBuffer = await sharp(Buffer.from(imageBuffer))
+      .resize(64, 64, { fit: 'cover' })
+      .webp({ quality: 80 })
+      .toBuffer();
+
+    const base64 = compressedBuffer.toString('base64');
+    
+    // Cache the result (limit cache to 100 entries to prevent memory leak)
+    if (imageCache.size >= 100) {
+      // Remove the first (oldest) entry
+      for (const key of imageCache.keys()) {
+        imageCache.delete(key);
+        break;
+      }
+    }
+    imageCache.set(bootcamperId, base64);
+    
+    return base64;
+  } catch (error) {
+    console.error(`Error compressing image for bootcamper ${bootcamperId}:`, error);
+    return null;
+  }
+}
 
 /**
  * GET /api/bootcampers/ranks
@@ -77,18 +116,55 @@ export async function GET(request: NextRequest) {
       where.isDefault = true;
     }
 
+    // Optimize: Only select needed fields, exclude large images initially
     const bootcampers = await prisma.bootcamper.findMany({
       where,
-      include: {
-        games: {
-          where: { status: 'completed' },
-          orderBy: { startedAt: 'desc' },
-        },
+      select: {
+        id: true,
+        riotId: true,
+        summonerName: true,
+        name: true,
+        summonerId: true,
+        puuid: true,
+        region: true,
+        twitchLogin: true,
+        twitchUserId: true,
+        twitchProfileImage: true, // We need this but will compress it
+        role: true,
+        startDate: true,
+        plannedEndDate: true,
+        actualEndDate: true,
+        status: true,
+        peakSoloTier: true,
+        peakSoloRank: true,
+        peakSoloLP: true,
+        peakFlexTier: true,
+        peakFlexRank: true,
+        peakFlexLP: true,
+        peakUpdatedAt: true,
+        currentSoloTier: true,
+        currentSoloRank: true,
+        currentSoloLP: true,
+        currentSoloWins: true,
+        currentSoloLosses: true,
+        currentFlexTier: true,
+        currentFlexRank: true,
+        currentFlexLP: true,
+        currentFlexWins: true,
+        currentFlexLosses: true,
+        rankUpdatedAt: true,
+        _count: {
+          select: {
+            games: {
+              where: { status: 'completed' }
+            }
+          }
+        }
       },
     });
 
-    // Return rank data from database (updated by worker every 5 minutes)
-    const ranksData = bootcampers.map((bootcamper: BootcamperWithGames) => {
+    // Process images in parallel for better performance
+    const ranksDataPromises = bootcampers.map(async (bootcamper) => {
       // Get peak rank from database (stored by worker)
       let peakRank = null;
       if (bootcamper.peakSoloTier && bootcamper.peakSoloRank !== null && bootcamper.peakSoloLP !== null) {
@@ -112,6 +188,12 @@ export async function GET(request: NextRequest) {
         };
       }
 
+      // Compress profile image if it exists
+      let compressedImage: string | null = null;
+      if (bootcamper.twitchProfileImage) {
+        compressedImage = await compressProfileImage(bootcamper.twitchProfileImage, bootcamper.id);
+      }
+
       return {
         id: bootcamper.id,
         summonerName: bootcamper.summonerName,
@@ -121,8 +203,8 @@ export async function GET(request: NextRequest) {
         role: bootcamper.role,
         status: bootcamper.status,
         twitchLogin: bootcamper.twitchLogin,
-        twitchProfileImage: bootcamper.twitchProfileImage ? Buffer.from(bootcamper.twitchProfileImage).toString('base64') : null,
-        gamesPlayed: bootcamper.games.length,
+        twitchProfileImage: compressedImage,
+        gamesPlayed: bootcamper._count.games,
         soloQueue: bootcamper.currentSoloTier
           ? {
               tier: bootcamper.currentSoloTier,
@@ -164,6 +246,9 @@ export async function GET(request: NextRequest) {
           : null,
       };
     });
+
+    // Wait for all image processing to complete
+    const ranksData = await Promise.all(ranksDataPromises);
 
     return NextResponse.json(ranksData);
   } catch (error) {

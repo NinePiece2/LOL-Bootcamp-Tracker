@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { getTwitchClient } from '@/lib/twitch-api';
+import { getRiotClient } from '@/lib/riot-api';
 import { auth } from '@/lib/auth';
 
 const updateBootcamperSchema = z.object({
@@ -90,6 +91,59 @@ export async function PATCH(
       );
     }
 
+    // Handle Riot ID changes
+    let newPuuid: string | undefined;
+    let newSummonerName: string | undefined;
+    const riotIdChanged = data.riotId && data.riotId !== existing.riotId;
+
+    if (riotIdChanged) {
+      // Parse Riot ID (format: "gameName#tagLine")
+      const [gameName, tagLine] = data.riotId!.split('#');
+      
+      if (!gameName || !tagLine) {
+        return NextResponse.json(
+          { error: 'Invalid Riot ID format. Expected format: gameName#tagLine' },
+          { status: 400 }
+        );
+      }
+
+      try {
+        const riotClient = getRiotClient();
+        
+        // Get account info from Riot ID
+        const account = await riotClient.getAccountByRiotId('asia', gameName, tagLine);
+        
+        if (!account) {
+          return NextResponse.json(
+            { error: 'Riot account not found' },
+            { status: 404 }
+          );
+        }
+
+        newPuuid = account.puuid;
+
+        // Get summoner info to get the current summoner name
+        const summoner = await riotClient.getSummonerByPuuid('kr', account.puuid);
+        
+        if (!summoner) {
+          return NextResponse.json(
+            { error: 'Summoner not found on KR server' },
+            { status: 404 }
+          );
+        }
+
+        newSummonerName = summoner.name;
+        
+        console.log(`🎮 Riot ID updated for bootcamper ${existing.summonerName}: ${data.riotId} (PUUID: ${newPuuid}, Summoner: ${newSummonerName})`);
+      } catch (error) {
+        console.error('Error fetching Riot account:', error);
+        return NextResponse.json(
+          { error: 'Failed to fetch Riot account information' },
+          { status: 500 }
+        );
+      }
+    }
+
     // Handle Twitch account changes
     let twitchUserId: string | undefined;
     let twitchProfileImage: Buffer | undefined;
@@ -122,6 +176,8 @@ export async function PATCH(
       data: {
         ...(data.name !== undefined && { name: data.name || null }),
         ...(data.riotId !== undefined && { riotId: data.riotId || null }),
+        ...(newPuuid && { puuid: newPuuid }),
+        ...(newSummonerName && { summonerName: newSummonerName }),
         ...(data.twitchLogin !== undefined && { twitchLogin: data.twitchLogin }),
         ...(twitchUserId && { twitchUserId }),
         ...(twitchProfileImage && { twitchProfileImage }),
@@ -140,6 +196,9 @@ export async function PATCH(
     });
 
     // Note: Worker sync will automatically pick up any changes within 2 minutes
+    if (riotIdChanged) {
+      console.log(`✅ Riot account updated for ${bootcamper.summonerName}. Jobs will use new PUUID on next run.`);
+    }
     if (twitchChanged) {
       console.log(`✅ Twitch account updated for ${bootcamper.summonerName}. Worker will sync jobs within 2 minutes.`);
     }
