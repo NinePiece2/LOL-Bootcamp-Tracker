@@ -50,9 +50,16 @@ interface LiveGamesSectionProps {
 // Cache for champion names
 const championNameCache: { [key: number]: string } = {};
 
-const getChampionIconUrl = (championName: string) => {
-  if (!championName) return "";
-  return `https://raw.githubusercontent.com/noxelisdev/LoL_DDragon/master/latest/img/champion/${championName.replace(/\s/g, "")}.png`;
+// OLD: use champion name string for icon URL
+// const getChampionIconUrl = (championName: string) => {
+//   if (!championName) return "";
+//   return `https://raw.githubusercontent.com/noxelisdev/LoL_DDragon/master/latest/img/champion/${championName.replace(/\s/g, "")}.png`;
+// };
+
+// NEW: use champion id for icon URL (CommunityDragon)
+const getChampionIconUrl = (championId?: number | null) => {
+  if (!championId) return "";
+  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${championId}.png`;
 };
 
 const getRankIconUrl = (tier: string | null | undefined) => {
@@ -332,25 +339,26 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                   </span>
                   {(() => {
                     const fetched = currentChampions[bootcamper.id];
-                    // Prioritize the current champion API data that's fetched immediately
-                    const champName = fetched?.championName || self?.championName || (self?.championId ? championNameCache[self.championId] : null);
-
+                    // Prioritize champion id/name from immediate fetch or participant data
+                    const champId = fetched?.championId ?? self?.championId ?? null;
+                    const champName = fetched?.championName ?? self?.championName ?? (champId ? championNameCache[champId] : null);
+                    
                     // Show "Playing:" if we have champion data from any source
-                    if (champName) {
+                    if (champId || champName) {
                       return (
                         <span className="flex items-center gap-1 text-xs text-blue-400 font-semibold">
                           Playing:
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={getChampionIconUrl(champName)}
-                            alt={champName}
+                            src={getChampionIconUrl(champId)}
+                            alt={champName || String(champId)}
                             className="w-5 h-5 rounded-full border border-gray-700 bg-black"
                           />
                           {champName}
                         </span>
                       );
                     }
-                    return null;
+                     return null;
                   })()}
                   {!expandedByDefault && (
                     <button
@@ -447,8 +455,8 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                                   {p.championName && (
                                     // eslint-disable-next-line @next/next/no-img-element
                                     <img
-                                      src={getChampionIconUrl(p.championName)}
-                                      alt={p.championName}
+                                      src={getChampionIconUrl(p.championId)}
+                                      alt={p.championName || String(p.championId)}
                                       className="w-6 h-6 rounded-full border border-gray-700 bg-black flex-shrink-0"
                                     />
                                   )}
