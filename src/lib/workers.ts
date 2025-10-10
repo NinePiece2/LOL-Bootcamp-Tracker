@@ -22,20 +22,16 @@ let playrateWorker: Worker;
 
 interface SpectatorJobData {
   bootcamperId: string;
-  puuid: string;
-  region: RiotRegion;
 }
 
 interface MatchDataJobData {
   bootcamperId: string;
   gameId: string;
-  region: RiotRegion;
+  // REMOVED: region - will be fetched fresh from DB
 }
 
 interface SummonerNameJobData {
   bootcamperId: string;
-  puuid: string;
-  region: RiotRegion;
 }
 
 interface TwitchStreamJobData {
@@ -46,23 +42,15 @@ interface TwitchStreamJobData {
 
 interface RankJobData {
   bootcamperId: string;
-  puuid: string;
-  region: RiotRegion;
 }
 
 /**
  * Poll spectator API for a bootcamper
  */
 async function checkSpectator(data: SpectatorJobData) {
-  const { bootcamperId, puuid, region } = data;
+  const { bootcamperId } = data;
   
-  // Skip if PUUID is missing (old jobs before migration)
-  if (!puuid) {
-    console.warn(`Skipping spectator check for bootcamper ${bootcamperId}: PUUID missing`);
-    return;
-  }
-  
-  const riotClient = getRiotClient();
+  // ALREADY UPDATED - fetches fresh bootcamper data from DB
   const bootcamper = await prisma.bootcamper.findUnique({
     where: { id: bootcamperId },
   });
@@ -71,6 +59,18 @@ async function checkSpectator(data: SpectatorJobData) {
     console.warn(`Bootcamper ${bootcamperId} not found, skipping spectator check`);
     return;
   }
+
+  // Use fresh PUUID from database
+  const puuid = bootcamper.puuid;
+  const region = bootcamper.region as RiotRegion;
+  
+  // Skip if PUUID is missing
+  if (!puuid) {
+    console.warn(`Skipping spectator check for bootcamper ${bootcamperId}: PUUID missing`);
+    return;
+  }
+  
+  const riotClient = getRiotClient();
 
   try {
     const activeGame = await riotClient.getActiveGame(region, puuid);
@@ -249,7 +249,7 @@ async function checkSpectator(data: SpectatorJobData) {
           {
             bootcamperId,
             gameId: bootcamper.lastGameId,
-            region,
+            // REMOVED: region - will be fetched fresh from DB
           },
           { delay: 60000 } // Wait 60 seconds before fetching match data
         );
@@ -259,8 +259,7 @@ async function checkSpectator(data: SpectatorJobData) {
           'check-rank-after-game',
           {
             bootcamperId,
-            puuid,
-            region,
+            // REMOVED: puuid and region - will be fetched fresh from DB
           },
           { delay: 90000 } // Wait 90 seconds to allow Riot API to update rank
         );
@@ -270,8 +269,7 @@ async function checkSpectator(data: SpectatorJobData) {
           'update-current-rank',
           {
             bootcamperId,
-            puuid,
-            region,
+            // REMOVED: puuid and region - will be fetched fresh from DB
           },
           { delay: 95000 } // Wait 95 seconds (slightly after peak rank check)
         );
@@ -296,9 +294,9 @@ async function checkSpectator(data: SpectatorJobData) {
  * Fetch match data from Riot API
  */
 async function fetchMatchData(data: MatchDataJobData) {
-  const { bootcamperId, gameId, region } = data;
+  const { bootcamperId, gameId } = data;
   
-  const riotClient = getRiotClient();
+  // Fetch fresh bootcamper data to get latest region
   const bootcamper = await prisma.bootcamper.findUnique({
     where: { id: bootcamperId },
   });
@@ -307,6 +305,10 @@ async function fetchMatchData(data: MatchDataJobData) {
     console.warn(`Bootcamper ${bootcamperId} not found, skipping match data fetch`);
     return;
   }
+
+  const region = bootcamper.region as RiotRegion;
+  
+  const riotClient = getRiotClient();
 
   try {
     // Construct match ID (format: REGION_GAMEID)
@@ -336,9 +338,9 @@ async function fetchMatchData(data: MatchDataJobData) {
  * Check and update summoner name if it has changed
  */
 async function updateSummonerName(data: SummonerNameJobData) {
-  const { bootcamperId, puuid, region } = data;
+  const { bootcamperId } = data;
   
-  const riotClient = getRiotClient();
+  // Fetch fresh bootcamper data to get latest PUUID/region
   const bootcamper = await prisma.bootcamper.findUnique({
     where: { id: bootcamperId },
   });
@@ -347,6 +349,16 @@ async function updateSummonerName(data: SummonerNameJobData) {
     console.warn(`Bootcamper ${bootcamperId} not found, skipping name update check`);
     return;
   }
+
+  const puuid = bootcamper.puuid;
+  const region = bootcamper.region as RiotRegion;
+
+  if (!puuid) {
+    console.warn(`Skipping name update for bootcamper ${bootcamperId}: PUUID missing`);
+    return;
+  }
+  
+  const riotClient = getRiotClient();
 
   try {
     // Get the platform region for Account API
@@ -387,9 +399,9 @@ async function updateSummonerName(data: SummonerNameJobData) {
  * Check if bootcamper is live on Twitch
  */
 async function checkTwitchStream(data: TwitchStreamJobData) {
-  const { bootcamperId, twitchUserId, twitchLogin } = data;
+  const { bootcamperId } = data;
   
-  const twitchClient = getTwitchClient();
+  // Fetch fresh bootcamper data to get latest Twitch info
   const bootcamper = await prisma.bootcamper.findUnique({
     where: { id: bootcamperId },
   });
@@ -398,6 +410,16 @@ async function checkTwitchStream(data: TwitchStreamJobData) {
     console.warn(`Bootcamper ${bootcamperId} not found, skipping Twitch check`);
     return;
   }
+
+  const twitchUserId = bootcamper.twitchUserId;
+  const twitchLogin = bootcamper.twitchLogin;
+
+  if (!twitchUserId || !twitchLogin) {
+    console.warn(`Skipping Twitch check for bootcamper ${bootcamperId}: Twitch info missing`);
+    return;
+  }
+  
+  const twitchClient = getTwitchClient();
 
   try {
     // Check if user is streaming
@@ -469,14 +491,9 @@ async function checkTwitchStream(data: TwitchStreamJobData) {
  * Check current rank and update peak rank if higher
  */
 async function checkAndUpdatePeakRank(data: RankJobData) {
-  const { bootcamperId, puuid, region } = data;
+  const { bootcamperId } = data;
   
-  if (!puuid) {
-    console.warn(`Skipping rank check for bootcamper ${bootcamperId}: PUUID missing`);
-    return;
-  }
-  
-  const riotClient = getRiotClient();
+  // Fetch fresh bootcamper data to get latest PUUID/region
   const bootcamper = await prisma.bootcamper.findUnique({
     where: { id: bootcamperId },
   });
@@ -485,6 +502,16 @@ async function checkAndUpdatePeakRank(data: RankJobData) {
     console.warn(`Bootcamper ${bootcamperId} not found, skipping rank check`);
     return;
   }
+
+  const puuid = bootcamper.puuid;
+  const region = bootcamper.region as RiotRegion;
+
+  if (!puuid) {
+    console.warn(`Skipping rank check for bootcamper ${bootcamperId}: PUUID missing`);
+    return;
+  }
+  
+  const riotClient = getRiotClient();
 
   try {
     const leagueEntries = await riotClient.getLeagueEntries(region, puuid);
@@ -620,14 +647,23 @@ async function checkAndUpdatePeakRank(data: RankJobData) {
  * Update current rank data for a bootcamper (called by periodic worker)
  */
 async function updateCurrentRank(data: RankJobData) {
-  const { bootcamperId, puuid, region } = data;
+  const { bootcamperId } = data;
 
+  // Fetch fresh bootcamper data to get latest PUUID/region
   const bootcamper = await prisma.bootcamper.findUnique({
     where: { id: bootcamperId },
   });
 
   if (!bootcamper) {
     console.warn(`Bootcamper ${bootcamperId} not found`);
+    return;
+  }
+
+  const puuid = bootcamper.puuid;
+  const region = bootcamper.region as RiotRegion;
+
+  if (!puuid) {
+    console.warn(`Skipping rank update for bootcamper ${bootcamperId}: PUUID missing`);
     return;
   }
 
@@ -763,8 +799,7 @@ export async function queueRankUpdate(bootcamperId: string, puuid: string, regio
     'update-current-rank',
     {
       bootcamperId,
-      puuid,
-      region,
+      // REMOVED: puuid and region - will be fetched fresh from DB
     },
     { delay: 2000 } // Wait 2 seconds before fetching rank
   );
@@ -798,8 +833,7 @@ export async function scheduleSpectatorChecks() {
       `check-${bootcamper.id}`,
       {
         bootcamperId: bootcamper.id,
-        puuid: bootcamper.puuid,
-        region: bootcamper.region as RiotRegion,
+        // REMOVED: puuid and region - will be fetched fresh from DB
       },
       {
         repeat: {
@@ -882,8 +916,7 @@ export async function scheduleSummonerNameChecks() {
       `check-${bootcamper.id}`,
       {
         bootcamperId: bootcamper.id,
-        puuid: bootcamper.puuid,
-        region: bootcamper.region as RiotRegion,
+        // REMOVED: puuid and region - will be fetched fresh from DB
       },
       {
         repeat: {
@@ -923,8 +956,7 @@ export async function schedulePeriodicRankChecks() {
       'update-current-rank',
       {
         bootcamperId: bootcamper.id,
-        puuid: bootcamper.puuid,
-        region: bootcamper.region as RiotRegion,
+        // REMOVED: puuid and region - will be fetched fresh from DB
       },
       {
         repeat: {
@@ -939,8 +971,7 @@ export async function schedulePeriodicRankChecks() {
       'check-rank-after-game',
       {
         bootcamperId: bootcamper.id,
-        puuid: bootcamper.puuid,
-        region: bootcamper.region as RiotRegion,
+        // REMOVED: puuid and region - will be fetched fresh from DB
       },
       {
         repeat: {
@@ -982,9 +1013,53 @@ async function syncBootcampersWithJobs() {
 
     const bootcamperIds = new Set(bootcampers.map(b => b.id));
 
+    // Get all repeatable jobs
+    const spectatorRepeatableJobs = await spectatorQueue.getRepeatableJobs();
+    const nameRepeatableJobs = await summonerNameQueue.getRepeatableJobs();
+    const rankRepeatableJobs = await rankQueue.getRepeatableJobs();
+    const twitchRepeatableJobs = await twitchStreamQueue.getRepeatableJobs();
+
+    // Build sets of existing job names/patterns
+    const existingSpectatorJobIds = new Set(
+      spectatorRepeatableJobs.map(j => j.name) // name is "check-{bootcamperId}"
+    );
+    const existingNameJobIds = new Set(
+      nameRepeatableJobs.map(j => j.name) // name is "check-{bootcamperId}"
+    );
+    const existingTwitchJobIds = new Set(
+      twitchRepeatableJobs.map(j => j.name) // name is "check-{bootcamperId}"
+    );
+
+    // For rank jobs, we need to check the delayed queue to get jobIds
+    const delayedRankJobs = await rankQueue.getDelayed();
+    
+    // Extract bootcamper IDs from rank job names and data
+    const rankJobsByBootcamper = new Map<string, Set<string>>();
+    
+    for (const job of delayedRankJobs) {
+      if (job.opts?.repeat && job.data?.bootcamperId) {
+        const bootcamperId = job.data.bootcamperId;
+        if (!rankJobsByBootcamper.has(bootcamperId)) {
+          rankJobsByBootcamper.set(bootcamperId, new Set());
+        }
+        rankJobsByBootcamper.get(bootcamperId)!.add(job.name);
+      }
+    }
+
+    // Debug: log what we found
+    console.log(
+      '  🔎 Existing jobs:',
+      '\n    Spectator:', Array.from(existingSpectatorJobIds).slice(0, 2),
+      '\n    Name:', Array.from(existingNameJobIds).slice(0, 2),
+      '\n    Rank jobs by bootcamper:', Array.from(rankJobsByBootcamper.entries()).slice(0, 2).map(([id, jobs]) => ({ 
+        id: id.substring(0, 8) + '...', 
+        jobs: Array.from(jobs) 
+      })),
+      '\n    Twitch:', Array.from(existingTwitchJobIds).slice(0, 2)
+    );
+
     // Check for orphaned jobs (bootcampers that were deleted)
-    const allSpectatorJobs = await spectatorQueue.getRepeatableJobs();
-    for (const job of allSpectatorJobs) {
+    for (const job of spectatorRepeatableJobs) {
       // Extract bootcamper ID from the job name (format: "check-{id}")
       const keyMatch = job.name?.match(/^check-(.+)$/);
       const bootcamperId = keyMatch ? keyMatch[1] : null;
@@ -995,44 +1070,38 @@ async function syncBootcampersWithJobs() {
         // Remove all job types for this bootcamper
         await spectatorQueue.removeRepeatableByKey(job.key);
         
-        const nameJobs = await summonerNameQueue.getRepeatableJobs();
-        const nameJobToRemove = nameJobs.find(j => j.name === `check-${bootcamperId}`);
+        const nameJobToRemove = nameRepeatableJobs.find(j => j.name === `check-${bootcamperId}`);
         if (nameJobToRemove) await summonerNameQueue.removeRepeatableByKey(nameJobToRemove.key);
         
-        const rankJobs = await rankQueue.getRepeatableJobs();
-        const currentRankJob = rankJobs.find(j => j.name === 'update-current-rank' && j.key.includes(bootcamperId));
-        const peakRankJob = rankJobs.find(j => j.name === 'check-rank-after-game' && j.key.includes(bootcamperId));
-        if (currentRankJob) await rankQueue.removeRepeatableByKey(currentRankJob.key);
-        if (peakRankJob) await rankQueue.removeRepeatableByKey(peakRankJob.key);
+        // Remove rank jobs for this bootcamper
+        for (const rankJob of rankRepeatableJobs) {
+          const jobData = delayedRankJobs.find(dj => dj.id?.includes(rankJob.key));
+          if (jobData?.data?.bootcamperId === bootcamperId) {
+            await rankQueue.removeRepeatableByKey(rankJob.key);
+          }
+        }
         
-        const twitchJobs = await twitchStreamQueue.getRepeatableJobs();
-        const twitchJob = twitchJobs.find(j => j.name === `check-${bootcamperId}`);
+        const twitchJob = twitchRepeatableJobs.find(j => j.name === `check-${bootcamperId}`);
         if (twitchJob) await twitchStreamQueue.removeRepeatableByKey(twitchJob.key);
         
         removedCount++;
       }
     }
 
-    // Get all repeatable jobs once to avoid repeated calls
-    const spectatorRepeatableJobs = await spectatorQueue.getRepeatableJobs();
-    const nameRepeatableJobs = await summonerNameQueue.getRepeatableJobs();
-    const rankRepeatableJobs = await rankQueue.getRepeatableJobs();
-    const twitchRepeatableJobs = await twitchStreamQueue.getRepeatableJobs();
-
     // Add missing jobs for active bootcampers
     for (const bootcamper of bootcampers) {
       if (!bootcamper.puuid) continue;
 
-      // Check which jobs exist for this bootcamper by checking the job NAME (not ID)
-      const hasSpectatorJob = spectatorRepeatableJobs.some(j => j.name === `check-${bootcamper.id}`);
-      const hasNameJob = nameRepeatableJobs.some(j => j.name === `check-${bootcamper.id}`);
-      const hasCurrentRankJob = rankRepeatableJobs.some(j => 
-        j.name === 'update-current-rank' && j.key.includes(bootcamper.id)
-      );
-      const hasPeakRankJob = rankRepeatableJobs.some(j => 
-        j.name === 'check-rank-after-game' && j.key.includes(bootcamper.id)
-      );
-      const hasTwitchJob = twitchRepeatableJobs.some(j => j.name === `check-${bootcamper.id}`);
+      // Check which jobs exist
+      const hasSpectatorJob = existingSpectatorJobIds.has(`check-${bootcamper.id}`);
+      const hasNameJob = existingNameJobIds.has(`check-${bootcamper.id}`);
+      
+      // For rank jobs, check if this bootcamper has both current and peak rank jobs
+      const bootcamperRankJobs = rankJobsByBootcamper.get(bootcamper.id) || new Set();
+      const hasCurrentRankJob = bootcamperRankJobs.has('update-current-rank');
+      const hasPeakRankJob = bootcamperRankJobs.has('check-rank-after-game');
+      
+      const hasTwitchJob = existingTwitchJobIds.has(`check-${bootcamper.id}`);
       
       const missingJobs: string[] = [];
       
@@ -1043,8 +1112,7 @@ async function syncBootcampersWithJobs() {
           `check-${bootcamper.id}`,
           {
             bootcamperId: bootcamper.id,
-            puuid: bootcamper.puuid,
-            region: bootcamper.region as RiotRegion,
+            // REMOVED: puuid and region - will be fetched fresh from DB
           },
           {
             repeat: { every: 60000 },
@@ -1060,8 +1128,7 @@ async function syncBootcampersWithJobs() {
           `check-${bootcamper.id}`,
           {
             bootcamperId: bootcamper.id,
-            puuid: bootcamper.puuid,
-            region: bootcamper.region as RiotRegion,
+            // REMOVED: puuid and region - will be fetched fresh from DB
           },
           {
             repeat: { every: 3600000 },
@@ -1077,8 +1144,7 @@ async function syncBootcampersWithJobs() {
           'update-current-rank',
           {
             bootcamperId: bootcamper.id,
-            puuid: bootcamper.puuid,
-            region: bootcamper.region as RiotRegion,
+            // REMOVED: puuid and region - will be fetched fresh from DB
           },
           {
             repeat: { every: 300000 },
@@ -1094,8 +1160,7 @@ async function syncBootcampersWithJobs() {
           'check-rank-after-game',
           {
             bootcamperId: bootcamper.id,
-            puuid: bootcamper.puuid,
-            region: bootcamper.region as RiotRegion,
+            // REMOVED: puuid and region - will be fetched fresh from DB
           },
           {
             repeat: { every: 300000 },

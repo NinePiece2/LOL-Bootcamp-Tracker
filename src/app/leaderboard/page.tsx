@@ -824,7 +824,7 @@ export default function LeaderboardPage() {
             allowSorting={true}
             pageSettings={{ pageSize: 10 }}
             toolbar={['Search']}
-            height={850}
+            height={875}
             enableHover={true}
           >
           <ColumnsDirective>
