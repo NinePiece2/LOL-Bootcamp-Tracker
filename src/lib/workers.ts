@@ -789,7 +789,7 @@ async function updateCurrentRank(data: RankJobData) {
  * Queue a rank update for a bootcamper (called when bootcamper is added)
  * Exported for use in API routes
  */
-export async function queueRankUpdate(bootcamperId: string, puuid: string, region: RiotRegion) {
+export async function queueRankUpdate(bootcamperId: string) {
   if (!rankQueue) {
     console.warn('Workers not initialized. Cannot queue rank update.');
     return;
