@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTwitchClient } from '@/lib/twitch-api';
 import { prisma } from '@/lib/db';
+import { auth } from '@/lib/auth';
 
 const TWITCH_CALLBACK_URL = process.env.TWITCH_CALLBACK_URL || '';
 const TWITCH_EVENTSUB_SECRET = process.env.TWITCH_EVENTSUB_SECRET || '';
@@ -13,6 +14,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Require authenticated admin
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!session.user.isAdmin) {
+      return NextResponse.json({ error: 'Forbidden - admin only' }, { status: 403 });
+    }
+
     const { id } = await params;
     console.log('Attempting to subscribe bootcamper to Twitch EventSub:', id);
     

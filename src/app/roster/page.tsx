@@ -8,10 +8,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AddBootcamperDialog } from '@/components/add-bootcamper-dialog';
 import { EditBootcamperDialog } from '@/components/edit-bootcamper-dialog';
+import { SelectBootcamperDialog } from '@/components/select-bootcamper-dialog';
 import { ListSwitcher } from '@/components/list-switcher';
 import { GameProfileLinks } from '@/components/game-profile-links';
 import { format } from 'date-fns';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Plus } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
 
 interface Game {
   id: string;
@@ -37,6 +39,8 @@ interface Bootcamper {
   actualEndDate: string | null;
   games: Game[];
   twitchStreams: TwitchStream[];
+  userAssociationId?: string | null;
+  userId?: string | null;
 }
 
 export default function RosterPage() {
@@ -45,7 +49,9 @@ export default function RosterPage() {
   const [bootcampers, setBootcampers] = useState<Bootcamper[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showSelectDialog, setShowSelectDialog] = useState(false);
   const [editingBootcamper, setEditingBootcamper] = useState<Bootcamper | null>(null);
+  const { toast } = useToast();
   
   // Set initial list based on user permissions
   const getInitialList = (): 'default' | 'user' => {
@@ -165,45 +171,85 @@ export default function RosterPage() {
   };
 
   const actionsTemplate = (props: Bootcamper) => {
+    // Only admins can edit canonical/default bootcampers.
+    const canEdit = Boolean(session?.user?.isAdmin);
+    // Allow delete if admin OR this row is a user association owned by current user
+    const canDelete = Boolean(
+      session?.user?.isAdmin || (props.userAssociationId && props.userId === session?.user?.id)
+    );
+
     return (
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setEditingBootcamper(props)}
-          className="h-8 px-2"
-        >
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button
-          size="sm"
-          variant="destructive"
-          onClick={() => handleDelete(props.id)}
-          className="h-8 px-2"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+      <div className="flex gap-2 justify-center">
+        {canEdit && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setEditingBootcamper(props)}
+            className="h-8 px-2"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+        )}
+        {canDelete && (
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => handleDelete(props.id)}
+            className="h-8 px-2"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
+        {!canEdit && !canDelete && <span className="text-sm text-gray-400">—</span>}
       </div>
     );
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this bootcamper?')) return;
+    if (!confirm('Are you sure you want to remove this bootcamper from your list?')) return;
 
-    try {
-      const response = await fetch(`/api/bootcampers/${id}`, {
-        method: 'DELETE',
-      });
+  try {
+      // Find bootcamper in current list to determine if this is an association
+      const bc = bootcampers.find(b => b.id === id);
 
-      if (!response.ok) {
-        throw new Error('Failed to delete bootcamper');
+      let response: Response;
+      if (bc && bc.userAssociationId) {
+        // Delete the user association
+        response = await fetch(`/api/user-bootcampers/${bc.userAssociationId}`, { method: 'DELETE' });
+      } else {
+        // Admin deletion of canonical bootcamper (or legacy user row)
+        response = await fetch(`/api/bootcampers/${id}`, { method: 'DELETE' });
       }
 
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Unknown' }));
+        throw new Error(err?.error || 'Failed to delete bootcamper');
+      }
+
+      toast({ title: 'Bootcamper removed', variant: 'success', description: 'Bootcamper removed from your list.' });
       fetchBootcampers();
     } catch (error) {
       console.error('Error deleting bootcamper:', error);
-      alert('Failed to delete bootcamper');
+      toast({ title: 'Failed to remove', variant: 'error', description: error instanceof Error ? error.message : 'Failed to delete bootcamper' });
     }
+  };
+
+  // Determine which dialog to show based on user role and current list
+  const handleAddClick = () => {
+    if (session?.user?.isAdmin && currentList === 'default') {
+      // Admins can create new default bootcampers
+      setShowAddDialog(true);
+    } else {
+      // Regular users or admins on their personal list select from defaults
+      setShowSelectDialog(true);
+    }
+  };
+
+  const getAddButtonText = () => {
+    if (session?.user?.isAdmin && currentList === 'default') {
+      return 'Add New Bootcamper';
+    }
+    return 'Add from Default List';
   };
 
   if (status === 'loading' || isLoading) {
@@ -231,8 +277,9 @@ export default function RosterPage() {
           </div>
           <ListSwitcher currentList={currentList} onSwitch={setCurrentList} />
         </div>
-        <Button onClick={() => setShowAddDialog(true)}>
-          Add Bootcamper
+        <Button onClick={handleAddClick} className="flex items-center gap-2">
+          <Plus className="h-4 w-4" />
+          {getAddButtonText()}
         </Button>
       </div>
 
@@ -296,24 +343,34 @@ export default function RosterPage() {
               textAlign="Center"
               template={dateTemplate('plannedEndDate')}
             />
-            <ColumnDirective
-              headerText="Actions"
-              width="120"
-              textAlign="Center"
-              template={actionsTemplate}
-              allowSorting={false}
-              allowFiltering={false}
-            />
+            {(session?.user?.isAdmin || currentList === 'user') && (
+              <ColumnDirective
+                headerText="Actions"
+                width="120"
+                textAlign="Center"
+                template={actionsTemplate}
+                allowSorting={false}
+                allowFiltering={false}
+              />
+            )}
           </ColumnsDirective>
           <Inject services={[Page, Filter, Sort, Toolbar]} />
         </GridComponent>
       </div>
 
+      {/* Admin dialog for creating new bootcampers */}
       <AddBootcamperDialog
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
         onSuccess={fetchBootcampers}
         currentList={currentList}
+      />
+
+      {/* Selection dialog for choosing from default list */}
+      <SelectBootcamperDialog
+        open={showSelectDialog}
+        onOpenChange={setShowSelectDialog}
+        onSuccess={fetchBootcampers}
       />
 
       <EditBootcamperDialog

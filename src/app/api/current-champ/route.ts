@@ -29,11 +29,32 @@ export async function GET(request: Request) {
     let gameRecord = null;
 
     if (bootcamperId) {
+      // First try to get game directly
       gameRecord = await findGameByBootcamperId(bootcamperId);
+      
+      // If no game found and this might be a user reference, check linked default bootcamper
+      if (!gameRecord) {
+        const bootcamper = await prisma.bootcamper.findUnique({
+          where: { id: bootcamperId },
+          select: { linkedToDefaultId: true, puuid: true }
+        });
+        
+        if (bootcamper?.linkedToDefaultId) {
+          // This is a user reference, get game from default bootcamper
+          gameRecord = await findGameByBootcamperId(bootcamper.linkedToDefaultId);
+        }
+      }
     } else if (puuid) {
       // Resolve bootcamper by puuid and query by bootcamperId
       const bc = await prisma.bootcamper.findFirst({ where: { puuid } });
-      if (bc) gameRecord = await findGameByBootcamperId(bc.id);
+      if (bc) {
+        gameRecord = await findGameByBootcamperId(bc.id);
+        
+        // If no game and this is a user reference, check default bootcamper
+        if (!gameRecord && bc.linkedToDefaultId) {
+          gameRecord = await findGameByBootcamperId(bc.linkedToDefaultId);
+        }
+      }
     }
 
     if (!gameRecord || !gameRecord.matchData) {

@@ -84,7 +84,16 @@ export async function PATCH(
     }
 
     // Check authorization - user can only edit their own bootcampers unless they're admin
-    if (existing.userId !== session.user.id && !session.user.isAdmin) {
+    // Only admins can edit default bootcampers or change admin-only fields
+    if (existing.isDefault && !session.user.isAdmin) {
+      return NextResponse.json(
+        { error: 'Forbidden - only admins can edit default bootcampers' },
+        { status: 403 }
+      );
+    }
+
+    // Non-admins can only edit bootcampers they own
+    if (!session.user.isAdmin && existing.userId !== session.user.id) {
       return NextResponse.json(
         { error: 'Forbidden - you can only edit your own bootcampers' },
         { status: 403 }
@@ -174,6 +183,7 @@ export async function PATCH(
     const bootcamper = await prisma.bootcamper.update({
       where: { id },
       data: {
+        // Prevent non-admins from changing admin-only fields
         ...(data.name !== undefined && { name: data.name || null }),
         ...(data.riotId !== undefined && { riotId: data.riotId || null }),
         ...(newPuuid && { puuid: newPuuid }),
@@ -181,7 +191,8 @@ export async function PATCH(
         ...(data.twitchLogin !== undefined && { twitchLogin: data.twitchLogin }),
         ...(twitchUserId && { twitchUserId }),
         ...(twitchProfileImage && { twitchProfileImage }),
-        ...(data.role !== undefined && { role: data.role }),
+        // Role changes reserved for admins
+        ...(session.user.isAdmin && data.role !== undefined && { role: data.role }),
         ...(data.startDate !== undefined && {
           startDate: new Date(data.startDate),
         }),
@@ -191,7 +202,8 @@ export async function PATCH(
         ...(data.actualEndDate !== undefined && {
           actualEndDate: data.actualEndDate ? new Date(data.actualEndDate) : null,
         }),
-        ...(data.status !== undefined && { status: data.status }),
+        // Only admins may set status (to avoid spoofing in user's list)
+        ...(session.user.isAdmin && data.status !== undefined && { status: data.status }),
       },
     });
 

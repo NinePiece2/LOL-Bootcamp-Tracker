@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getRiotClient } from '@/lib/riot-api';
 import { RiotRegion, REGION_TO_PLATFORM } from '@/lib/types';
+import { auth } from '@/lib/auth';
 
 /**
  * API endpoint to manually trigger summoner name updates for all bootcampers
@@ -9,6 +10,14 @@ import { RiotRegion, REGION_TO_PLATFORM } from '@/lib/types';
  */
 export async function POST() {
   try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!session.user.isAdmin) {
+      return NextResponse.json({ error: 'Forbidden - admin only' }, { status: 403 });
+    }
+
     const riotClient = getRiotClient();
     
     // Get all active bootcampers with PUUID

@@ -45,6 +45,36 @@ interface RankJobData {
 }
 
 /**
+ * Helper function to sync data from a default bootcamper to all user references
+ */
+async function syncDataToUserReferences(defaultBootcamperId: string, updateData: Record<string, unknown>) {
+  try {
+    // Find all user references linked to this default bootcamper
+    const userReferences = await prisma.bootcamper.findMany({
+      where: {
+        linkedToDefaultId: defaultBootcamperId,
+        isDefault: false,
+      },
+    });
+
+    if (userReferences.length > 0) {
+      // Update all user references with the same data
+      await prisma.bootcamper.updateMany({
+        where: {
+          linkedToDefaultId: defaultBootcamperId,
+          isDefault: false,
+        },
+        data: updateData,
+      });
+      
+      console.log(`🔄 Synced data to ${userReferences.length} user references for default bootcamper ${defaultBootcamperId}`);
+    }
+  } catch (error) {
+    console.error(`Error syncing data to user references for ${defaultBootcamperId}:`, error);
+  }
+}
+
+/**
  * Poll spectator API for a bootcamper
  */
 async function checkSpectator(data: SpectatorJobData) {
@@ -201,6 +231,14 @@ async function checkSpectator(data: SpectatorJobData) {
           }),
         ]);
 
+        // Sync status to user references if this is a default bootcamper
+        if (bootcamper.isDefault) {
+          await syncDataToUserReferences(bootcamperId, {
+            status: 'in_game',
+            lastGameId: activeGame.gameId.toString(),
+          });
+        }
+
         // TODO: Emit WebSocket event for game started
       } else {
         // Game is ongoing but not new - just update bootcamper status if needed
@@ -215,6 +253,14 @@ async function checkSpectator(data: SpectatorJobData) {
               lastGameId: activeGame.gameId.toString(),
             },
           });
+
+          // Sync status to user references if this is a default bootcamper
+          if (bootcamper.isDefault) {
+            await syncDataToUserReferences(bootcamperId, {
+              status: 'in_game',
+              lastGameId: activeGame.gameId.toString(),
+            });
+          }
         }
       }
     } else {
@@ -242,6 +288,13 @@ async function checkSpectator(data: SpectatorJobData) {
             },
           }),
         ]);
+
+        // Sync status to user references if this is a default bootcamper
+        if (bootcamper.isDefault) {
+          await syncDataToUserReferences(bootcamperId, {
+            status: 'idle',
+          });
+        }
 
         // Schedule match data fetch (with delay to allow Riot API to process)
         await matchDataQueue.add(
@@ -377,14 +430,21 @@ async function updateSummonerName(data: SummonerNameJobData) {
       const oldRiotId = bootcamper.riotId || 'N/A';
       
       // Update the database with the new name
+      const nameUpdateData = {
+        summonerName: currentSummonerName,
+        riotId: currentRiotId,
+        updatedAt: new Date(),
+      };
+      
       await prisma.bootcamper.update({
         where: { id: bootcamperId },
-        data: {
-          summonerName: currentSummonerName,
-          riotId: currentRiotId,
-          updatedAt: new Date(),
-        },
+        data: nameUpdateData,
       });
+
+      // Sync name data to user references if this is a default bootcamper
+      if (bootcamper.isDefault) {
+        await syncDataToUserReferences(bootcamperId, nameUpdateData);
+      }
       
       console.log(`🔄 Name change detected!`);
       console.log(`   ${oldName} (${oldRiotId}) → ${currentSummonerName} (${currentRiotId})`);
@@ -618,6 +678,11 @@ async function checkAndUpdatePeakRank(data: RankJobData) {
         where: { id: bootcamperId },
         data: updates,
       });
+
+      // Sync peak rank data to user references if this is a default bootcamper
+      if (bootcamper.isDefault) {
+        await syncDataToUserReferences(bootcamperId, updates);
+      }
     }
   } catch (error) {
     // Better error handling with context
@@ -739,6 +804,11 @@ async function updateCurrentRank(data: RankJobData) {
       data: updates,
     });
 
+    // Sync rank data to user references if this is a default bootcamper
+    if (bootcamper.isDefault) {
+      await syncDataToUserReferences(bootcamperId, updates);
+    }
+
     console.log(`✅ Updated current rank for: ${bootcamper.summonerName}`);
   } catch (error) {
     // Better error handling - don't overwrite existing rank data on API errors
@@ -747,22 +817,29 @@ async function updateCurrentRank(data: RankJobData) {
         // Player is unranked - only update to null if they were previously unranked
         if (!bootcamper.currentSoloTier && !bootcamper.currentFlexTier) {
           console.log(`ℹ️  ${bootcamper.summonerName} confirmed unranked (404 from Riot API)`);
+          const unrankedData = {
+            currentSoloTier: null,
+            currentSoloRank: null,
+            currentSoloLP: null,
+            currentSoloWins: null,
+            currentSoloLosses: null,
+            currentFlexTier: null,
+            currentFlexRank: null,
+            currentFlexLP: null,
+            currentFlexWins: null,
+            currentFlexLosses: null,
+            rankUpdatedAt: new Date(),
+          };
+          
           await prisma.bootcamper.update({
             where: { id: bootcamperId },
-            data: {
-              currentSoloTier: null,
-              currentSoloRank: null,
-              currentSoloLP: null,
-              currentSoloWins: null,
-              currentSoloLosses: null,
-              currentFlexTier: null,
-              currentFlexRank: null,
-              currentFlexLP: null,
-              currentFlexWins: null,
-              currentFlexLosses: null,
-              rankUpdatedAt: new Date(),
-            },
+            data: unrankedData,
           });
+
+          // Sync unranked data to user references if this is a default bootcamper
+          if (bootcamper.isDefault) {
+            await syncDataToUserReferences(bootcamperId, unrankedData);
+          }
         } else {
           console.log(`ℹ️  ${bootcamper.summonerName} returned 404 but has existing rank data - keeping existing data`);
         }
@@ -826,9 +903,53 @@ export async function scheduleSpectatorChecks() {
     },
   });
 
-  console.log(`Scheduling spectator checks for ${bootcampers.length} bootcampers`);
+  // Group by PUUID to avoid duplicate workers for the same player
+  const bootcampersByPuuid = new Map<string, typeof bootcampers[0]>();
+  bootcampers.forEach(bc => {
+    if (bc.puuid && !bootcampersByPuuid.has(bc.puuid)) {
+      // Prefer default bootcampers over user references for workers
+      const existing = bootcampersByPuuid.get(bc.puuid);
+      if (!existing || (!existing.isDefault && bc.isDefault)) {
+        bootcampersByPuuid.set(bc.puuid, bc);
+      }
+    } else if (!bc.puuid) {
+      // Handle bootcampers without PUUID (shouldn't happen but just in case)
+      bootcampersByPuuid.set(bc.id, bc);
+    }
+  });
 
-  for (const bootcamper of bootcampers) {
+  const uniqueBootcampers = Array.from(bootcampersByPuuid.values());
+
+  console.log(`Scheduling spectator checks for ${uniqueBootcampers.length} unique bootcampers (${bootcampers.length} total)`);
+
+  for (const bootcamper of uniqueBootcampers) {
+    // Ensure user references that point to the same puuid link to this chosen owner
+    try {
+      if (bootcamper.puuid && bootcamper.isDefault) {
+        await prisma.bootcamper.updateMany({
+          where: {
+            puuid: bootcamper.puuid,
+            isDefault: false,
+          },
+          data: {
+            linkedToDefaultId: bootcamper.id,
+          },
+        });
+      } else if (bootcamper.puuid && !bootcamper.isDefault) {
+        // If chosen owner is a user reference (no default exists), link other user refs to this owner
+        await prisma.bootcamper.updateMany({
+          where: {
+            puuid: bootcamper.puuid,
+            id: { not: bootcamper.id },
+          },
+          data: {
+            linkedToDefaultId: bootcamper.id,
+          },
+        });
+      }
+    } catch (err) {
+      console.error('Error linking user references to worker owner:', err);
+    }
     await spectatorQueue.add(
       `check-${bootcamper.id}`,
       {
@@ -867,9 +988,42 @@ export async function scheduleTwitchStreamChecks() {
     },
   });
 
-  console.log(`Scheduling Twitch stream checks for ${bootcampers.length} bootcampers`);
+  // Group by PUUID to avoid duplicate workers for the same player
+  const bootcampersByPuuid = new Map<string, typeof bootcampers[0]>();
+  bootcampers.forEach(bc => {
+    if (bc.puuid && !bootcampersByPuuid.has(bc.puuid)) {
+      // Prefer default bootcampers over user references for workers
+      const existing = bootcampersByPuuid.get(bc.puuid);
+      if (!existing || (!existing.isDefault && bc.isDefault)) {
+        bootcampersByPuuid.set(bc.puuid, bc);
+      }
+    } else if (!bc.puuid) {
+      // Handle bootcampers without PUUID (shouldn't happen but just in case)
+      bootcampersByPuuid.set(bc.id, bc);
+    }
+  });
 
-  for (const bootcamper of bootcampers) {
+  const uniqueBootcampers = Array.from(bootcampersByPuuid.values());
+
+  console.log(`Scheduling Twitch stream checks for ${uniqueBootcampers.length} unique bootcampers (${bootcampers.length} total)`);
+
+  for (const bootcamper of uniqueBootcampers) {
+    // Link user references to the chosen owner for Twitch checks as well
+    try {
+      if (bootcamper.puuid && bootcamper.isDefault) {
+        await prisma.bootcamper.updateMany({
+          where: { puuid: bootcamper.puuid, isDefault: false },
+          data: { linkedToDefaultId: bootcamper.id },
+        });
+      } else if (bootcamper.puuid && !bootcamper.isDefault) {
+        await prisma.bootcamper.updateMany({
+          where: { puuid: bootcamper.puuid, id: { not: bootcamper.id } },
+          data: { linkedToDefaultId: bootcamper.id },
+        });
+      }
+    } catch (err) {
+      console.error('Error linking user references for twitch owner:', err);
+    }
     if (bootcamper.twitchUserId && bootcamper.twitchLogin) {
       await twitchStreamQueue.add(
         `check-${bootcamper.id}`,
@@ -909,9 +1063,36 @@ export async function scheduleSummonerNameChecks() {
     },
   });
 
-  console.log(`Scheduling summoner name checks for ${bootcampers.length} bootcampers`);
+  // Group by PUUID to avoid duplicate workers for the same player
+  const bootcampersByPuuid = new Map<string, typeof bootcampers[0]>();
+  bootcampers.forEach(bc => {
+    if (bc.puuid && !bootcampersByPuuid.has(bc.puuid)) {
+      // Prefer default bootcampers over user references for workers
+      const existing = bootcampersByPuuid.get(bc.puuid);
+      if (!existing || (!existing.isDefault && bc.isDefault)) {
+        bootcampersByPuuid.set(bc.puuid, bc);
+      }
+    } else if (!bc.puuid) {
+      // Handle bootcampers without PUUID (shouldn't happen but just in case)
+      bootcampersByPuuid.set(bc.id, bc);
+    }
+  });
 
-  for (const bootcamper of bootcampers) {
+  const uniqueBootcampers = Array.from(bootcampersByPuuid.values());
+
+  console.log(`Scheduling summoner name checks for ${uniqueBootcampers.length} unique bootcampers (${bootcampers.length} total)`);
+
+  for (const bootcamper of uniqueBootcampers) {
+    // Link user references to chosen owner for summoner-name checks
+    try {
+      if (bootcamper.puuid && bootcamper.isDefault) {
+        await prisma.bootcamper.updateMany({ where: { puuid: bootcamper.puuid, isDefault: false }, data: { linkedToDefaultId: bootcamper.id } });
+      } else if (bootcamper.puuid && !bootcamper.isDefault) {
+        await prisma.bootcamper.updateMany({ where: { puuid: bootcamper.puuid, id: { not: bootcamper.id } }, data: { linkedToDefaultId: bootcamper.id } });
+      }
+    } catch (err) {
+      console.error('Error linking user references for name owner:', err);
+    }
     await summonerNameQueue.add(
       `check-${bootcamper.id}`,
       {
@@ -948,9 +1129,36 @@ export async function schedulePeriodicRankChecks() {
     },
   });
 
-  console.log(`Scheduling periodic rank checks for ${bootcampers.length} bootcampers`);
+  // Group by PUUID to avoid duplicate workers for the same player
+  const bootcampersByPuuid = new Map<string, typeof bootcampers[0]>();
+  bootcampers.forEach(bc => {
+    if (bc.puuid && !bootcampersByPuuid.has(bc.puuid)) {
+      // Prefer default bootcampers over user references for workers
+      const existing = bootcampersByPuuid.get(bc.puuid);
+      if (!existing || (!existing.isDefault && bc.isDefault)) {
+        bootcampersByPuuid.set(bc.puuid, bc);
+      }
+    } else if (!bc.puuid) {
+      // Handle bootcampers without PUUID (shouldn't happen but just in case)
+      bootcampersByPuuid.set(bc.id, bc);
+    }
+  });
 
-  for (const bootcamper of bootcampers) {
+  const uniqueBootcampers = Array.from(bootcampersByPuuid.values());
+
+  console.log(`Scheduling periodic rank checks for ${uniqueBootcampers.length} unique bootcampers (${bootcampers.length} total)`);
+
+  for (const bootcamper of uniqueBootcampers) {
+    // Link user references to chosen owner for rank checks
+    try {
+      if (bootcamper.puuid && bootcamper.isDefault) {
+        await prisma.bootcamper.updateMany({ where: { puuid: bootcamper.puuid, isDefault: false }, data: { linkedToDefaultId: bootcamper.id } });
+      } else if (bootcamper.puuid && !bootcamper.isDefault) {
+        await prisma.bootcamper.updateMany({ where: { puuid: bootcamper.puuid, id: { not: bootcamper.id } }, data: { linkedToDefaultId: bootcamper.id } });
+      }
+    } catch (err) {
+      console.error('Error linking user references for rank owner:', err);
+    }
     // Schedule current rank update
     await rankQueue.add(
       'update-current-rank',
@@ -996,7 +1204,8 @@ async function syncBootcampersWithJobs() {
   }
 
   try {
-    // Get all active bootcampers
+    // Get all active bootcampers that should have jobs
+    // NOTE: We now include user references but avoid duplicate API calls
     const bootcampers = await prisma.bootcamper.findMany({
       where: {
         startDate: { lte: new Date() },
@@ -1004,14 +1213,35 @@ async function syncBootcampersWithJobs() {
           { plannedEndDate: { gte: new Date() } },
           { actualEndDate: { gte: new Date() } },
         ],
+        // We include all bootcampers (default and user references)
+        // But we'll dedupe by PUUID to avoid duplicate API calls
       },
     });
 
     console.log(`🔄 Syncing ${bootcampers.length} active bootcampers with jobs...`);
+    
+    // Group by PUUID to avoid duplicate workers for the same player
+    const bootcampersByPuuid = new Map<string, typeof bootcampers[0]>();
+    bootcampers.forEach(bc => {
+      if (bc.puuid && !bootcampersByPuuid.has(bc.puuid)) {
+        // Prefer default bootcampers over user references for workers
+        const existing = bootcampersByPuuid.get(bc.puuid);
+        if (!existing || (!existing.isDefault && bc.isDefault)) {
+          bootcampersByPuuid.set(bc.puuid, bc);
+        }
+      } else if (!bc.puuid) {
+        // Handle bootcampers without PUUID (shouldn't happen but just in case)
+        bootcampersByPuuid.set(bc.id, bc);
+      }
+    });
+
+    const uniqueBootcampers = Array.from(bootcampersByPuuid.values());
+    console.log(`📊 After deduplication: ${uniqueBootcampers.length} unique bootcampers for workers`);
+
     let addedCount = 0;
     let removedCount = 0;
 
-    const bootcamperIds = new Set(bootcampers.map(b => b.id));
+    const bootcamperIds = new Set(uniqueBootcampers.map(b => b.id));
 
     // Get all repeatable jobs
     const spectatorRepeatableJobs = await spectatorQueue.getRepeatableJobs();
@@ -1089,7 +1319,7 @@ async function syncBootcampersWithJobs() {
     }
 
     // Add missing jobs for active bootcampers
-    for (const bootcamper of bootcampers) {
+    for (const bootcamper of uniqueBootcampers) {
       if (!bootcamper.puuid) continue;
 
       // Check which jobs exist
@@ -1198,7 +1428,7 @@ async function syncBootcampersWithJobs() {
       console.log(`✅ All bootcampers in sync with jobs`);
     }
   } catch (error) {
-    console.error('❌ Error syncing bootcampers with jobs:', error);
+    console.error('Error syncing bootcampers with jobs:', error);
   }
 }
 

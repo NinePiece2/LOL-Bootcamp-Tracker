@@ -145,22 +145,6 @@ export class RiotAPIClient {
   }
 
   /**
-   * Get summoner by summoner name (DEPRECATED by Riot)
-   * Use getAccountByRiotId + getSummonerByPuuid instead
-   * Note: This endpoint may return 403 as Riot is phasing it out
-   */
-  async getSummonerByName(
-    region: RiotRegion,
-    summonerName: string
-  ): Promise<RiotSummonerDTO> {
-    const encodedName = encodeURIComponent(summonerName);
-    return this.rateLimitedRequest<RiotSummonerDTO>(
-      region,
-      `/lol/summoner/v4/summoners/by-name/${encodedName}`
-    );
-  }
-
-  /**
    * Get summoner by PUUID
    */
   async getSummonerByPuuid(
@@ -188,19 +172,6 @@ export class RiotAPIClient {
     const platformRegion = REGION_TO_PLATFORM[region];
     const account = await this.getAccountByRiotId(platformRegion, gameName, tagLine);
     return this.getSummonerByPuuid(region, account.puuid);
-  }
-
-  /**
-   * Get summoner by summoner ID
-   */
-  async getSummonerById(
-    region: RiotRegion,
-    summonerId: string
-  ): Promise<RiotSummonerDTO> {
-    return this.rateLimitedRequest<RiotSummonerDTO>(
-      region,
-      `/lol/summoner/v4/summoners/${summonerId}`
-    );
   }
 
   /**
@@ -240,32 +211,13 @@ export class RiotAPIClient {
       );
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
+        console.log('No ranked data found for PUUID:', puuid);
         return [];
       }
       throw error;
     }
   }
 
-  /**
-   * Get league entries for a summoner by summonerId
-   * This is useful when you only have summonerId from spectator API
-   */
-  async getLeagueEntriesBySummonerId(
-    region: RiotRegion,
-    summonerId: string
-  ): Promise<LeagueEntryDTO[]> {
-    try {
-      return await this.rateLimitedRequest<LeagueEntryDTO[]>(
-        region,
-        `/lol/league/v4/entries/by-summoner/${summonerId}`
-      );
-    } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 404) {
-        return [];
-      }
-      throw error;
-    }
-  }
 
   /**
    * Get match by match ID

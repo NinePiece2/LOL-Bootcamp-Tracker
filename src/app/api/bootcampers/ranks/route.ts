@@ -108,15 +108,186 @@ export async function GET(request: NextRequest) {
     if (session?.user) {
       if (listType === 'default' || !listType) {
         where.isDefault = true;
-      } else if (listType === 'user') {
-        where.userId = session.user.id;
-        where.isDefault = false;
       }
+      // If listType === 'user', we'll use the association table below and return early
     } else {
       where.isDefault = true;
     }
 
     // Optimize: Only select needed fields, exclude large images initially
+    // If the user requested their personal list, prefer the association table
+    if (session?.user && listType === 'user') {
+      // Fetch associations and include canonical bootcamper data (including rank fields and images)
+      const associations = await prisma.userBootcamper.findMany({
+        where: { userId: session.user.id },
+        include: {
+          bootcamper: {
+            select: {
+              id: true,
+              riotId: true,
+              summonerName: true,
+              name: true,
+              summonerId: true,
+              puuid: true,
+              region: true,
+              twitchLogin: true,
+              twitchUserId: true,
+              twitchProfileImage: true,
+              role: true,
+              startDate: true,
+              plannedEndDate: true,
+              actualEndDate: true,
+              status: true,
+              peakSoloTier: true,
+              peakSoloRank: true,
+              peakSoloLP: true,
+              peakFlexTier: true,
+              peakFlexRank: true,
+              peakFlexLP: true,
+              peakUpdatedAt: true,
+              currentSoloTier: true,
+              currentSoloRank: true,
+              currentSoloLP: true,
+              currentSoloWins: true,
+              currentSoloLosses: true,
+              currentFlexTier: true,
+              currentFlexRank: true,
+              currentFlexLP: true,
+              currentFlexWins: true,
+              currentFlexLosses: true,
+              rankUpdatedAt: true,
+              linkedToDefaultId: true,
+              _count: {
+                select: {
+                  games: {
+                    where: { status: 'completed' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      type CanonicalBoot = {
+        id: string;
+        riotId?: string | null;
+        summonerName: string;
+        name?: string | null;
+        region: string;
+        twitchLogin?: string | null;
+        twitchProfileImage?: Uint8Array | null;
+        role?: string | null;
+        status: string;
+        currentSoloTier?: string | null;
+        currentSoloRank?: string | null;
+        currentSoloLP?: number | null;
+        currentSoloWins?: number | null;
+        currentSoloLosses?: number | null;
+        currentFlexTier?: string | null;
+        currentFlexRank?: string | null;
+        currentFlexLP?: number | null;
+        currentFlexWins?: number | null;
+        currentFlexLosses?: number | null;
+        peakSoloTier?: string | null;
+        peakSoloRank?: string | null;
+        peakSoloLP?: number | null;
+        peakFlexTier?: string | null;
+        peakFlexRank?: string | null;
+        peakFlexLP?: number | null;
+        _count?: { games?: number };
+      };
+
+      const ranksDataPromises = associations.map(async (assoc) => {
+        const b = assoc.bootcamper as CanonicalBoot;
+
+        // gamesPlayed: prefer count from canonical bootcamper
+        const gamesPlayed = b._count?.games || 0;
+
+        // peak rank
+        let peakRank = null;
+        if (b.peakSoloTier && b.peakSoloRank !== null && b.peakSoloLP !== null) {
+          peakRank = {
+            tier: b.peakSoloTier,
+            rank: b.peakSoloRank,
+            leaguePoints: b.peakSoloLP,
+            wins: 0,
+            losses: 0,
+            winRate: 0,
+          };
+        } else if (b.peakFlexTier && b.peakFlexRank !== null && b.peakFlexLP !== null) {
+          peakRank = {
+            tier: b.peakFlexTier,
+            rank: b.peakFlexRank,
+            leaguePoints: b.peakFlexLP,
+            wins: 0,
+            losses: 0,
+            winRate: 0,
+          };
+        }
+
+        let compressedImage: string | null = null;
+        if (b.twitchProfileImage) {
+          compressedImage = await compressProfileImage(b.twitchProfileImage as unknown as Uint8Array, assoc.id);
+        }
+
+        return {
+          id: assoc.id, // use association id so frontend can reference userAssociationId
+          summonerName: b.summonerName,
+          name: assoc.nameOverride || b.name || null,
+          riotId: b.riotId,
+          region: b.region,
+          role: b.role,
+          status: b.status,
+          twitchLogin: b.twitchLogin,
+          twitchProfileImage: compressedImage,
+          gamesPlayed,
+          soloQueue: b.currentSoloTier
+            ? {
+                tier: b.currentSoloTier,
+                rank: b.currentSoloRank!,
+                leaguePoints: b.currentSoloLP!,
+                wins: b.currentSoloWins || 0,
+                losses: b.currentSoloLosses || 0,
+                winRate:
+                  (b.currentSoloWins || 0) + (b.currentSoloLosses || 0) > 0
+                    ? ((b.currentSoloWins || 0) / ((b.currentSoloWins || 0) + (b.currentSoloLosses || 0))) * 100
+                    : 0,
+              }
+            : null,
+          flexQueue: b.currentFlexTier
+            ? {
+                tier: b.currentFlexTier,
+                rank: b.currentFlexRank!,
+                leaguePoints: b.currentFlexLP!,
+                wins: b.currentFlexWins || 0,
+                losses: b.currentFlexLosses || 0,
+                winRate:
+                  (b.currentFlexWins || 0) + (b.currentFlexLosses || 0) > 0
+                    ? ((b.currentFlexWins || 0) / ((b.currentFlexWins || 0) + (b.currentFlexLosses || 0))) * 100
+                    : 0,
+              }
+            : null,
+          peakRank: peakRank
+            ? {
+                tier: peakRank.tier,
+                rank: peakRank.rank,
+                leaguePoints: peakRank.leaguePoints,
+                wins: peakRank.wins,
+                losses: peakRank.losses,
+                winRate:
+                  peakRank.wins + peakRank.losses > 0
+                    ? (peakRank.wins / (peakRank.wins + peakRank.losses)) * 100
+                    : 0,
+              }
+            : null,
+        };
+      });
+
+      const ranksData = await Promise.all(ranksDataPromises);
+      return NextResponse.json(ranksData);
+    }
+
     const bootcampers = await prisma.bootcamper.findMany({
       where,
       select: {
@@ -153,6 +324,7 @@ export async function GET(request: NextRequest) {
         currentFlexWins: true,
         currentFlexLosses: true,
         rankUpdatedAt: true,
+        linkedToDefaultId: true,
         _count: {
           select: {
             games: {
@@ -163,8 +335,26 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Process images in parallel for better performance
+    // Process images in parallel for better performance and get game counts for user references
     const ranksDataPromises = bootcampers.map(async (bootcamper) => {
+      // For user references, get game count from linked default bootcamper
+      let gamesPlayed = bootcamper._count.games;
+      if (bootcamper.linkedToDefaultId && gamesPlayed === 0) {
+        const defaultBootcamper = await prisma.bootcamper.findUnique({
+          where: { id: bootcamper.linkedToDefaultId },
+          select: {
+            _count: {
+              select: {
+                games: {
+                  where: { status: 'completed' }
+                }
+              }
+            }
+          }
+        });
+        gamesPlayed = defaultBootcamper?._count.games || 0;
+      }
+
       // Get peak rank from database (stored by worker)
       let peakRank = null;
       if (bootcamper.peakSoloTier && bootcamper.peakSoloRank !== null && bootcamper.peakSoloLP !== null) {
@@ -204,7 +394,7 @@ export async function GET(request: NextRequest) {
         status: bootcamper.status,
         twitchLogin: bootcamper.twitchLogin,
         twitchProfileImage: compressedImage,
-        gamesPlayed: bootcamper._count.games,
+        gamesPlayed: gamesPlayed, // Use the corrected games count
         soloQueue: bootcamper.currentSoloTier
           ? {
               tier: bootcamper.currentSoloTier,

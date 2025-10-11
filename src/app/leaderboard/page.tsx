@@ -659,8 +659,18 @@ export default function LeaderboardPage() {
         const response = await fetch(`/api/bootcampers?listType=${listType}`);
         const allBootcampers: BootcamperWithGames[] = await response.json();
         
-        // Find the specific bootcamper
-        const bootcamper = allBootcampers.find(b => b.id === props.id);
+        // Find the specific bootcamper. The ranks API may return association ids for user lists,
+        // while the bootcampers GET returns canonical bootcamper ids and sets `userAssociationId`.
+        // Try both matches so the modal works regardless of which id shape the leaderboard used.
+        let bootcamper = allBootcampers.find(b => b.id === props.id);
+        if (!bootcamper) {
+          // Lightweight type guard for objects that might have userAssociationId
+          const hasUserAssoc = (x: unknown): x is { userAssociationId?: string | null } => {
+            return typeof x === 'object' && x !== null && 'userAssociationId' in (x as Record<string, unknown>);
+          };
+
+          bootcamper = allBootcampers.find(b => hasUserAssoc(b) && b.userAssociationId === props.id);
+        }
         
         if (bootcamper) {
           setSelectedBootcamper(bootcamper);

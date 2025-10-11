@@ -8,18 +8,19 @@ datasource db {
 }
 
 model User {
-  id          String       @id @default(uuid())
-  email       String       @unique
-  password    String
-  name        String?
-  isAdmin     Boolean      @default(false) @map("is_admin")
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
-  username    String       @unique
-  accounts    Account[]
-  bootcampers Bootcamper[]
-  sessions    Session[]
-  userLayout  UserLayout?
+  id              String           @id @default(uuid())
+  email           String           @unique
+  password        String
+  name            String?
+  isAdmin         Boolean          @default(false) @map("is_admin")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  username        String           @unique
+  accounts        Account[]
+  bootcampers     Bootcamper[]
+  userBootcampers UserBootcamper[]
+  sessions        Session[]
+  userLayout      UserLayout?
 
   @@map("users")
 }
@@ -99,6 +100,7 @@ model Bootcamper {
   games              Game[]
   teamMembers        TeamMember[]
   twitchStreams      TwitchStream[]
+  userBootcampers    UserBootcamper[]
 
   @@unique([puuid, userId])
   @@map("bootcampers")
@@ -164,9 +166,9 @@ enum BootcamperStatus {
 }
 
 enum GameStatus {
-  live         // Deprecated - kept for backward compatibility
-  in_progress  // Active game
-  completed    // Finished game
+  live // Deprecated - kept for backward compatibility
+  in_progress // Active game
+  completed // Finished game
 }
 
 model UserLayout {
@@ -195,4 +197,21 @@ model ChampionPlayrate {
 
   @@index([championId])
   @@map("champion_playrates")
+}
+
+// Association table linking users to canonical bootcampers (one bootcamper row per player)
+model UserBootcamper {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  bootcamperId   String    @map("bootcamper_id")
+  nameOverride   String?   @map("name_override")
+  startDate      DateTime  @map("start_date")
+  plannedEndDate DateTime? @map("planned_end_date")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bootcamper Bootcamper @relation(fields: [bootcamperId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bootcamperId])
+  @@map("user_bootcampers")
 }
