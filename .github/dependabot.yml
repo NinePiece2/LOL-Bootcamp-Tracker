@@ -25,3 +25,18 @@ updates:
       prefix: "deps(actions)"
     reviewers:
       - "ninepiece2"
+    
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "daily"
+      time: "11:00"
+      timezone: "America/Toronto"
+    commit-message:
+      prefix: "deps(docker)"
+    groups:
+      docker-images:
+        patterns:
+          - "*"
+    reviewers:
+      - "ninepiece2"
