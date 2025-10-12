@@ -11,7 +11,7 @@ export default function UmamiAnalytics({
   websiteId = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID,
   src = process.env.NEXT_PUBLIC_UMAMI_URL,
 }: UmamiAnalyticsProps) {
-  if (process.env.NODE_ENV !== "production" || !websiteId) return null;
+  if (!src || !websiteId) return null;
 
   return (
     <Script
