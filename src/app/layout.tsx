@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Navigation } from "@/components/navigation";
 import { Providers } from "@/components/providers";
+import UmamiAnalytics from "@/components/umami-analytics";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,6 +37,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <UmamiAnalytics />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black text-white min-h-screen`}
       >
