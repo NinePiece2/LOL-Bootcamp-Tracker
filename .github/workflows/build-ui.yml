@@ -40,6 +40,8 @@ jobs:
             tags: ${{ secrets.DOCKER_USERNAME }}/lol-bootcamp-tracker:latest
             build-args: |
               SYNCFUSION_LICENSE=${{ secrets.SyncfusionLicense }}
+              NEXT_PUBLIC_UMAMI_WEBSITE_ID=${{ secrets.NEXT_PUBLIC_UMAMI_WEBSITE_ID }}
+              NEXT_PUBLIC_UMAMI_URL=${{ secrets.NEXT_PUBLIC_UMAMI_URL }}
 
         - name: Trigger Deploy Workflow
           uses: peter-evans/repository-dispatch@v4
