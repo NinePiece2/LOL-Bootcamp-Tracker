@@ -423,7 +423,7 @@
   transition-duration: 150ms;
 }
 
-html::-webkit-scrollbar, 
-body::-webkit-scrollbar {
-  display: none;
+::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
 }
