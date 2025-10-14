@@ -239,6 +239,7 @@ export async function GET(request: NextRequest) {
           region: b.region,
           role: b.role,
           status: b.status,
+          twitchIsLive: !!(await prisma.twitchStream.findFirst({ where: { bootcamperId: b.id, live: true } })),
           twitchLogin: b.twitchLogin,
           twitchProfileImage: compressedImage,
           gamesPlayed,
@@ -300,7 +301,7 @@ export async function GET(request: NextRequest) {
         region: true,
         twitchLogin: true,
         twitchUserId: true,
-        twitchProfileImage: true, // We need this but will compress it
+        twitchProfileImage: true,
         role: true,
         startDate: true,
         plannedEndDate: true,
@@ -392,9 +393,10 @@ export async function GET(request: NextRequest) {
         region: bootcamper.region,
         role: bootcamper.role,
         status: bootcamper.status,
+        twitchIsLive: !!(await prisma.twitchStream.findFirst({ where: { bootcamperId: bootcamper.id, live: true } })),
         twitchLogin: bootcamper.twitchLogin,
         twitchProfileImage: compressedImage,
-        gamesPlayed: gamesPlayed, // Use the corrected games count
+        gamesPlayed: gamesPlayed,
         soloQueue: bootcamper.currentSoloTier
           ? {
               tier: bootcamper.currentSoloTier,

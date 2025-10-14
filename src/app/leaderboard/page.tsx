@@ -82,6 +82,105 @@ export default function LeaderboardPage() {
   const [selectedBootcamper, setSelectedBootcamper] = useState<BootcamperWithGames | null>(null);
   const [isLoadingGameData, setIsLoadingGameData] = useState(false);
   const gridRef = useRef<GridComponent>(null);
+  const highlightTimeoutRef = useRef<number | null>(null);
+  const prevHighlightRef = useRef<Array<{ el: HTMLElement; prevStyle: string }> | null>(null);
+
+  // Scroll to a bootcamper row in the Syncfusion grid and apply a temporary highlight.
+  const scrollToBootcamper = (bootcamperId?: string | null) => {
+    if (!bootcamperId) return;
+
+    try {
+      const gridEl = document.querySelector('.e-grid');
+      if (!gridEl) return;
+
+      let targetRow: HTMLElement | null = null;
+
+      const rows = Array.from(gridEl.querySelectorAll<HTMLTableRowElement>('.e-row'));
+      for (const row of rows) {
+        const rowText = row.textContent || '';
+        if (rowText.includes(bootcamperId)) {
+          targetRow = row as HTMLElement;
+          break;
+        }
+        const dataUid = row.getAttribute('data-uid') || '';
+        if (dataUid && dataUid.includes(bootcamperId)) {
+          targetRow = row as HTMLElement;
+          break;
+        }
+      }
+
+      if (!targetRow) {
+        const boot = bootcampers.find(b => b.id === bootcamperId || b.summonerName === bootcamperId);
+        if (boot) {
+          targetRow = rows.find(r => (r.textContent || '').includes(boot.summonerName)) as HTMLElement | undefined || null;
+        }
+      }
+
+      if (!targetRow) return;
+
+      targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      const cells = Array.from(targetRow.querySelectorAll<HTMLElement>('.e-rowcell'));
+      const descendants = Array.from(targetRow.querySelectorAll<HTMLElement>('*'));
+      const elementsToHighlight: HTMLElement[] = Array.from(new Set([targetRow, ...cells, ...descendants]));
+
+      if (prevHighlightRef.current) {
+        for (const prev of prevHighlightRef.current) {
+          try {
+            if (prev.prevStyle) prev.el.setAttribute('style', prev.prevStyle);
+            else prev.el.removeAttribute('style');
+          } catch {
+            // ignore
+          }
+        }
+        prevHighlightRef.current = null;
+      }
+
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
+
+      const saved: Array<{ el: HTMLElement; prevStyle: string }> = [];
+      for (const el of elementsToHighlight) {
+        const prev = el.getAttribute('style') || '';
+        saved.push({ el, prevStyle: prev });
+
+        try {
+          const current = el.getAttribute('style') || '';
+          const transition = 'transition: color 0.25s ease-in-out, background-color 0.25s ease-in-out;';
+          el.setAttribute('style', current + transition);
+        } catch {
+          // ignore
+        }
+
+        // Force foreground color and weight with important so it overrides grid cell CSS
+        // el.style.setProperty('color', '#001100', 'important'); // amber-400
+        el.style.setProperty('font-weight', '700', 'important');
+        el.style.setProperty('background-color', '#1a1a1a', 'important');
+        // el.style.setProperty('box-shadow', 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)', 'important');
+      }
+      prevHighlightRef.current = saved;
+
+      // Restore after 2 seconds
+      highlightTimeoutRef.current = window.setTimeout(() => {
+        if (prevHighlightRef.current) {
+          for (const prev of prevHighlightRef.current) {
+            try {
+              if (prev.prevStyle) prev.el.setAttribute('style', prev.prevStyle);
+              else prev.el.removeAttribute('style');
+            } catch {
+              // ignore
+            }
+          }
+        }
+        prevHighlightRef.current = null;
+        highlightTimeoutRef.current = null;
+      }, 2000);
+    } catch (err) {
+      console.error('scrollToBootcamper error', err);
+    }
+  };
   
   // Set initial list based on localStorage or user permissions
   const getInitialList = (): 'default' | 'user' => {
@@ -382,43 +481,63 @@ export default function LeaderboardPage() {
       rookie: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
     };
     
-    const twitchUrl = props.twitchLogin ? `https://www.twitch.tv/${props.twitchLogin}` : null;
+  const twitchUrl = props.twitchLogin ? `https://www.twitch.tv/${props.twitchLogin}` : null;
+  const isStreaming = Boolean((props as unknown as Record<string, unknown>).twitchIsLive) || props.status === 'streaming';
     
     return (
       <div className="flex items-center gap-3 justify-start">
         {/* Twitch Profile Picture */}
         {twitchUrl && props.twitchProfileImage ? (
-          <a 
-            href={twitchUrl} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="flex-shrink-0 hover:opacity-80 transition-opacity"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img 
-              src={`data:image/jpeg;base64,${props.twitchProfileImage}`}
-              alt={`${props.name || props.summonerName} profile`}
-              className="w-12 h-12 rounded-full object-cover ring-2 ring-purple-500/30"
-            />
-          </a>
+          <div className="relative flex-shrink-0">
+            <a 
+              href={twitchUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="hover:opacity-80 transition-opacity"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img 
+                src={`data:image/jpeg;base64,${props.twitchProfileImage}`}
+                alt={`${props.name || props.summonerName} profile`}
+                className={`w-12 h-12 rounded-full object-cover ${isStreaming ? 'ring-2 ring-red-500/60' : 'ring-2 ring-purple-500/30'}`}
+              />
+            </a>
+            {isStreaming && (
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 z-10 bg-red-600 text-white text-[8px] px-1 py-[1px] rounded-full font-medium">
+                Live
+              </div>
+            )}
+          </div>
         ) : twitchUrl ? (
-          <a 
-            href={twitchUrl} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="flex-shrink-0 hover:opacity-80 transition-opacity"
-          >
-            <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center ring-2 ring-purple-500/30">
-              <span className="text-purple-400 text-xs font-bold">
-                {(props.name || props.summonerName).charAt(0).toUpperCase()}
-              </span>
-            </div>
-          </a>
+          <div className="relative flex-shrink-0">
+            <a 
+              href={twitchUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="hover:opacity-80 transition-opacity"
+            >
+              <div className={`w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center ${isStreaming ? 'ring-2 ring-red-500/60' : 'ring-2 ring-purple-500/30'}`}>
+                <span className="text-purple-400 text-xs font-bold">
+                  {(props.name || props.summonerName).charAt(0).toUpperCase()}
+                </span>
+              </div>
+            </a>
+            {isStreaming && (
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 z-10 bg-red-600 text-white text-[8px] px-1 py-[1px] rounded-full font-medium">
+                Live
+              </div>
+            )}
+          </div>
         ) : (
-          <div className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center ring-2 ring-gray-600">
+          <div className={`relative w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center ${isStreaming ? 'ring-2 ring-red-500/60' : 'ring-2 ring-gray-600'}`}>
             <span className="text-gray-400 text-xs font-bold">
               {(props.name || props.summonerName).charAt(0).toUpperCase()}
             </span>
+            {isStreaming && (
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 z-10 bg-red-600 text-white text-[8px] px-1 py-[1px] rounded-full font-medium">
+                Live
+              </div>
+            )}
           </div>
         )}
         
@@ -780,7 +899,13 @@ export default function LeaderboardPage() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
-          <div className="card-modern p-6 text-center group">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => scrollToBootcamper(mostGames?.id)}
+            className="card-modern p-6 text-center group cursor-pointer"
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') scrollToBootcamper(mostGames?.id); }}
+          >
             <div className="flex items-center justify-center gap-3 mb-3">
               <div className="p-2 rounded-full bg-yellow-500/10">
                 <Trophy className="h-6 w-6 text-yellow-500" />
@@ -795,7 +920,13 @@ export default function LeaderboardPage() {
             <div className="h-1 w-12 mx-auto mt-3 bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-full opacity-60 group-hover:opacity-100 transition-opacity" />
           </div>
 
-          <div className="card-modern p-6 text-center group">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => scrollToBootcamper(highestWinRate?.id)}
+            className="card-modern p-6 text-center group cursor-pointer"
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') scrollToBootcamper(highestWinRate?.id); }}
+          >
             <div className="flex items-center justify-center gap-3 mb-3">
               <div className="p-2 rounded-full bg-green-500/10">
                 <TrendingUp className="h-6 w-6 text-green-500" />
