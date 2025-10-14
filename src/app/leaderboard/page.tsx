@@ -503,7 +503,7 @@ export default function LeaderboardPage() {
               />
             </a>
             {isStreaming && (
-              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 z-10 bg-red-600 text-white text-[8px] px-1 py-[1px] rounded-full font-medium">
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 z-10 bg-red-600 text-white text-[11px] px-1 py-[1px] rounded-full font-medium">
                 Live
               </div>
             )}
