@@ -45,6 +45,8 @@ interface LiveGamesSectionProps {
   onToggleLobby?: (id: string) => void;
   onLobbyClick?: (bootcamperId: string) => void;
   expandedByDefault?: boolean;
+  focusBootcamperId?: string | null;
+  focusOnly?: boolean;
 }
 
 // Cache for champion names
@@ -62,8 +64,16 @@ const getChampionIconUrl = (championId?: number | null) => {
   return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${championId}.png`;
 };
 
+// Make prettified champion names like "TwistedFate" -> "Twisted Fate"
+const prettifyChampionName = (name?: string | null) => {
+  if (!name) return null;
+  // Insert a space between a lowercase letter and an uppercase letter (camel-case split)
+  return name.replace(/([a-z])([A-Z])/g, '$1 $2');
+};
+
 const getRankIconUrl = (tier: string | null | undefined) => {
-  if (!tier) return null;
+  // If no tier is provided, fall back to the unranked emblem
+  if (!tier) return '/rank-images/unranked.png';
   const tierLower = tier.toLowerCase();
   return `/rank-images/${tierLower}.png`;
 };
@@ -73,7 +83,9 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
   expandedLobby, 
   onToggleLobby,
   onLobbyClick,
-  expandedByDefault = false
+  expandedByDefault = false,
+  focusBootcamperId = null,
+  focusOnly = false,
 }) => {
   const [enrichedBootcampers, setEnrichedBootcampers] = useState<Map<string, Bootcamper>>(new Map());
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
@@ -287,21 +299,349 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
     return () => { cancelled = true; };
   }, [inGameBootcampers]);
 
+    // Build a fast lookup map from participant identifiers to their GameData so
+    // we can quickly resolve a bootcamper's game even if their own `games` is empty.
+    const participantGameMap = new Map<string, GameData>();
+    const normalizeKey = (s?: string | null) => {
+      if (!s) return null;
+      try {
+        return s.toLowerCase().normalize('NFKD').trim();
+      } catch {
+        return s.toLowerCase().trim();
+      }
+    };
+
+    const addBootcamperToMap = (b: Bootcamper) => {
+      const g = b.games?.[0];
+      if (!g?.matchData?.participants) return;
+      for (const p of g.matchData.participants) {
+        if (p.puuid) participantGameMap.set(p.puuid, g);
+
+        const summ = normalizeKey(p.summonerName);
+        if (summ) participantGameMap.set(summ, g);
+
+        if (p.riotId) {
+          const riot = normalizeKey(p.riotId);
+          if (riot) participantGameMap.set(riot, g);
+          // also map prefix before '#', e.g. 'BROHAN#Haki' -> 'brohan'
+          const prefix = p.riotId.split('#')[0];
+          const normPrefix = normalizeKey(prefix);
+          if (normPrefix) participantGameMap.set(normPrefix, g);
+        }
+
+        if (p.riotIdGameName) {
+          const gameName = normalizeKey(p.riotIdGameName);
+          if (gameName) participantGameMap.set(gameName, g);
+          if (p.riotIdTagline) {
+            const combo = `${p.riotIdGameName}#${p.riotIdTagline}`;
+            const comboKey = normalizeKey(combo);
+            if (comboKey) participantGameMap.set(comboKey, g);
+          }
+        }
+      }
+    };
+
+    // Populate map with enriched bootcampers first (preferred), then raw inGameBootcampers
+    for (const [, val] of enrichedBootcampers) {
+      addBootcamperToMap(val as Bootcamper);
+    }
+    for (const b of inGameBootcampers) {
+      addBootcamperToMap(b as Bootcamper);
+    }
+
+    // Shared matcher used in multiple render paths (focus-only lobby + per-row rendering)
+    const matchesParticipant = (p: Participant, b: Bootcamper) => {
+      return (
+        (p.puuid && b.puuid && p.puuid === b.puuid) ||
+        (p.summonerName && b.summonerName && p.summonerName.toLowerCase() === b.summonerName.toLowerCase()) ||
+        (p.riotId && b.riotId && p.riotId.toLowerCase() === b.riotId.toLowerCase()) ||
+        // match riotId prefixes like 'BROHAN#Haki' -> 'BROHAN'
+        (p.riotId && b.riotId && p.riotId.split('#')[0].toLowerCase() === b.riotId.split('#')[0].toLowerCase()) ||
+        (p.riotIdGameName && b.summonerName && p.riotIdGameName.toLowerCase() === b.summonerName.toLowerCase())
+      );
+    };
+
+    // Tier color map (copied from leaderboard for consistent LP display)
+    const tierColors: Record<string, string> = {
+      CHALLENGER: 'text-cyan-400 font-bold',
+      GRANDMASTER: 'text-red-500 font-bold',
+      MASTER: 'text-purple-500 font-bold',
+      DIAMOND: 'text-blue-400',
+      EMERALD: 'text-emerald-500',
+      PLATINUM: 'text-teal-400',
+      GOLD: 'text-yellow-500',
+      SILVER: 'text-gray-400',
+      BRONZE: 'text-amber-700',
+      IRON: 'text-stone-500',
+    };
+
+  // If a focusBootcamperId is provided, resolve their game once and render the details
+  let focusedBootcamper: Bootcamper | null = null;
+  let focusedGame: GameData | null = null;
+  let focusedSelf: Participant | undefined;
+  let focusedIsExpanded = false;
+
+  if (focusBootcamperId) {
+    focusedBootcamper = inGameBootcampers.find(b => b.id === focusBootcamperId) || enrichedBootcampers.get(focusBootcamperId) || null;
+    if (focusedBootcamper) {
+      // Prefer the bootcamper's own game
+      focusedGame = (enrichedBootcampers.get(focusedBootcamper.id) || focusedBootcamper).games?.[0] || null;
+      if (!focusedGame) {
+        // Try participantGameMap lookups
+        if (focusedBootcamper.puuid && participantGameMap.has(focusedBootcamper.puuid)) focusedGame = participantGameMap.get(focusedBootcamper.puuid) || null;
+        const summ = normalizeKey(focusedBootcamper.summonerName);
+        if (!focusedGame && summ && participantGameMap.has(summ)) focusedGame = participantGameMap.get(summ) || null;
+        const riotk = normalizeKey(focusedBootcamper.riotId || undefined);
+        if (!focusedGame && riotk && participantGameMap.has(riotk)) focusedGame = participantGameMap.get(riotk) || null;
+      }
+      if (focusedBootcamper) {
+        focusedSelf = focusedGame?.matchData?.participants?.find(p => p.puuid === focusedBootcamper!.puuid || (p.summonerName && p.summonerName.toLowerCase() === focusedBootcamper!.summonerName.toLowerCase()));
+        focusedIsExpanded = expandedByDefault || (expandedLobby?.[focusedBootcamper.id] || false);
+      }
+    }
+  }
+
+  // Track which game IDs we've already rendered a lobby for to avoid duplicates
+  const renderedGameIds = new Set<string>();
+  if (focusOnly && focusedGame && focusedGame.id) {
+    renderedGameIds.add(focusedGame.id);
+  }
+
+  // When in focusOnly mode, build a set of bootcamper IDs that belong to the focused game
+  // so we can completely skip rendering their top-level cards (the focused lobby already shows them).
+  const focusedGameBootcamperIds = new Set<string>();
+  if (focusOnly && focusedGame && focusedGame.matchData?.participants) {
+    for (const p of focusedGame.matchData.participants) {
+      const matching = inGameBootcampers.find(b => matchesParticipant(p, b));
+      if (matching) focusedGameBootcamperIds.add(matching.id);
+    }
+  }
+
   return (
     <div className="space-y-3">
+      {/* Focused bootcamper details (render once) */}
+      {focusedBootcamper && focusedGame && (
+        <div className="p-4 bg-gradient-to-r from-gray-900/60 to-gray-900/30 rounded-xl border border-gray-800 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {/* avatar: prefer champion icon, fall back to role icon, then initial */}
+              <div className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center bg-black border border-gray-700">
+                {(() => {
+                  const fetched = currentChampions[focusedBootcamper!.id];
+                  const champId = fetched?.championId ?? focusedSelf?.championId ?? null;
+                  const role = focusedSelf?.inferredRole || 'TOP';
+                  const roleToImageFile: Record<string, string> = {
+                    'TOP': 'top.png',
+                    'JUNGLE': 'jungle.png',
+                    'MIDDLE': 'middle.png',
+                    'BOTTOM': 'bottom.png',
+                    'UTILITY': 'support.png',
+                  };
+
+                  if (champId) {
+                    return (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={getChampionIconUrl(champId)} alt={String(champId)} className="w-full h-full object-cover" />
+                    );
+                  }
+
+                  const roleImg = roleToImageFile[role] || 'unknown.png';
+                  return (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={`/positions/${roleImg}`} alt={role} className="w-8 h-8" />
+                  );
+                })()}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-semibold text-white">{focusedBootcamper.name || focusedBootcamper.summonerName}</span>
+                  <GameProfileLinks riotId={focusedBootcamper.riotId || null} summonerName={focusedBootcamper.summonerName} size="sm" />
+                </div>
+                <div className="text-xs text-gray-400 mt-1">Started {formatDistanceToNow(new Date(focusedGame.startedAt), { addSuffix: true })}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="inline-flex items-center gap-2 bg-red-600/10 border border-red-600 text-red-300 text-xs px-2 py-1 rounded-full">
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+                LIVE
+              </div>
+              {(() => {
+                const fetched = currentChampions[focusedBootcamper!.id];
+                const champId = fetched?.championId ?? focusedSelf?.championId ?? null;
+                const rawChampName = fetched?.championName ?? focusedSelf?.championName ?? (champId ? championNameCache[champId] : null);
+                const champName = prettifyChampionName(rawChampName);
+                if (champId || champName) {
+                  return (
+                    <div className="flex items-center gap-2 bg-gray-800/60 px-2 py-1 rounded">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={getChampionIconUrl(champId)} alt={champName || String(champId)} className="w-6 h-6 rounded-full border border-gray-700 bg-black" />
+                      <span className="text-sm text-amber-300 font-medium">{champName}</span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              {!expandedByDefault && (
+                <button className="px-3 py-1 text-xs bg-gray-800 rounded hover:bg-gray-700 text-gray-300" onClick={() => { if (onLobbyClick) onLobbyClick(focusedBootcamper!.id); else if (onToggleLobby) onToggleLobby(focusedBootcamper!.id); }}>
+                  {focusedIsExpanded ? 'Hide Lobby' : 'Show Lobby'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* If we're in focusOnly mode, render the full lobby once for the focused bootcamper (if expanded) */}
+      {focusOnly && focusedBootcamper && focusedGame && (focusedIsExpanded || expandedByDefault) && (
+        <div className="mt-3 bg-gradient-to-b from-gray-900/40 to-gray-900/10 rounded-lg border border-gray-800 p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[100, 200].map((teamId) => {
+              const roleOrder = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
+              const teamPlayers = (focusedGame.matchData?.participants || [])
+                .filter((p: Participant) => p.teamId === teamId)
+                .sort((a: Participant, b: Participant) => {
+                  const aIndex = roleOrder.indexOf(a.inferredRole || 'MIDDLE');
+                  const bIndex = roleOrder.indexOf(b.inferredRole || 'MIDDLE');
+                  return aIndex - bIndex;
+                });
+
+              if (teamPlayers.length === 0) return null;
+
+              return (
+                <div key={teamId} className="bg-gray-900/40 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-3 w-3 rounded-full ${teamId === 100 ? 'bg-blue-400' : 'bg-red-400'}`} />
+                      <span className="text-sm font-semibold text-gray-300">{teamId === 100 ? 'Blue Team' : 'Red Team'}</span>
+                    </div>
+                    <span className="text-xs text-gray-400">{teamPlayers.length} players</span>
+                  </div>
+
+                  <div className="space-y-2">
+                          {teamPlayers.map((p: Participant) => {
+                            const isBootcamper = inGameBootcampers.some(bc => matchesParticipant(p, bc));
+                            const matchingBootcamper = inGameBootcampers.find(bc => matchesParticipant(p, bc));
+                            const displayName = matchingBootcamper
+                              ? (matchingBootcamper.riotId ? (matchingBootcamper.name ? `${matchingBootcamper.riotId} (${matchingBootcamper.name})` : matchingBootcamper.riotId) : (matchingBootcamper.name ? `${matchingBootcamper.summonerName} (${matchingBootcamper.name})` : matchingBootcamper.summonerName))
+                              : (p.riotId || p.summonerName || (p.riotIdGameName && p.riotIdTagline ? `${p.riotIdGameName}#${p.riotIdTagline}` : p.riotIdGameName) || 'Unknown');
+
+                            const roleToImageFile: Record<string, string> = {
+                              'TOP': 'top.png',
+                              'JUNGLE': 'jungle.png',
+                              'MIDDLE': 'middle.png',
+                              'BOTTOM': 'bottom.png',
+                              'UTILITY': 'support.png',
+                            };
+                            const roleImage = roleToImageFile[p.inferredRole || 'TOP'] || 'unknown.png';
+
+                            return (
+                              <div key={p.puuid || p.summonerId || Math.random()} className={`flex items-center gap-3 p-2 rounded-md hover:bg-gray-900/40 transition ${isBootcamper ? 'ring-2 ring-amber-600/30 bg-amber-600/6' : ''}`}>
+                                <div className="flex items-center gap-2">
+                                  {/* role icon */}
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={`/positions/${roleImage}`} alt={p.inferredRole || 'Unknown'} className="w-6 h-6" />
+                                  <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-black border border-gray-700">
+                                    {p.championId ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img src={getChampionIconUrl(p.championId)} alt={p.championName || String(p.championId)} className="w-10 h-10 object-cover" />
+                                    ) : (
+                                      <div className="text-xs text-gray-400">{(p.summonerName || p.riotIdGameName || 'P').charAt(0).toUpperCase()}</div>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-white truncate">{displayName}</span>
+                                  </div>
+                                  <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-1">
+                                      {/* Always show an emblem; getRankIconUrl falls back to unranked.png when tier is falsy */}
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={getRankIconUrl(p.tier) || ''} alt={p.tier || 'Unranked'} className="w-4 h-4" />
+                                      {(() => {
+                                        const rawTier = p.tier || '';
+                                        const up = rawTier ? rawTier.toUpperCase() : '';
+                                        const tierDisplay = rawTier ? (rawTier.charAt(0) + rawTier.slice(1).toLowerCase()) : (p.rank || 'Unranked');
+                                        const isMajor = up === 'MASTER' || up === 'GRANDMASTER' || up === 'CHALLENGER';
+                                        return (
+                                          <>
+                                            <span className={`text-xs font-semibold ${tierColors[up || ''] || 'text-gray-400'}`}>
+                                              {tierDisplay}{!isMajor && p.division ? ` ${p.division}` : ''}
+                                            </span>
+                                            <span className="text-[11px] text-gray-400">{p.leaguePoints ?? 0} LP</span>
+                                          </>
+                                        );
+                                      })()}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <GameProfileLinks riotId={p.riotId || null} summonerName={p.summonerName || p.riotIdGameName || ''} size="sm" className="flex-shrink-0" />
+                                </div>
+                              </div>
+                            );
+                          })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {inGameBootcampers.length > 0 ? (
         inGameBootcampers.map((bootcamper) => {
+          // If we're focusing on a game, skip rendering the top-level card for any bootcamper
+          // that is part of the focused game to avoid duplicate headers/lobbies.
+          if (focusOnly && focusedGame && focusedGameBootcamperIds.has(bootcamper.id)) {
+            return null;
+          }
           // Use enriched version if available, otherwise use original
-          const displayBootcamper = enrichedBootcampers.get(bootcamper.id) || bootcamper;
-          const game = displayBootcamper.games?.[0];
+          const enriched = enrichedBootcampers.get(bootcamper.id) || bootcamper;
+
+          // Determine game: prefer this bootcamper's game, but if missing try to find another
+          // bootcamper's game using the participantGameMap so players in the same match share lobby data.
+          let game = enriched.games?.[0];
+
+          // Helper to find from map keys
+          const lookupGameFromMap = () => {
+            if (bootcamper.puuid && participantGameMap.has(bootcamper.puuid)) return participantGameMap.get(bootcamper.puuid) || null;
+            if (bootcamper.summonerName && participantGameMap.has(bootcamper.summonerName.toLowerCase())) return participantGameMap.get(bootcamper.summonerName.toLowerCase()) || null;
+            if ((bootcamper.riotId) && participantGameMap.has(bootcamper.riotId.toLowerCase())) return participantGameMap.get(bootcamper.riotId.toLowerCase()) || null;
+            // try matching by riotIdGameName too if present on participants
+            return null;
+          };
+
+          // use shared matchesParticipant defined above
+
+          if (!game) {
+            // Try fast lookup from map built earlier
+            const mapped = lookupGameFromMap();
+            if (mapped) {
+              game = mapped;
+            }
+          }
+
+          if (!game) {
+            // Last-resort: scan enriched bootcampers for matching participant
+            for (const [, val] of enrichedBootcampers) {
+              const g = val.games?.[0];
+              if (g?.matchData?.participants?.some(p => matchesParticipant(p, bootcamper))) {
+                  game = g;
+                  break;
+                }
+            }
+          }
+
           const lobby = game?.matchData?.participants || [];
-          const self = lobby.find((p: Participant) => 
-            p.summonerName === bootcamper.summonerName || 
-            p.riotIdGameName === bootcamper.summonerName ||
-            p.riotId === bootcamper.riotId ||
-            p.puuid === bootcamper.puuid
-          );
+          // Decide whether this per-row details block should render. When in focusOnly
+          // mode we do NOT render per-row details here (the focused lobby is rendered once above).
+          const shouldRenderDetails = Boolean(game && !focusOnly && (!focusBootcamperId || focusBootcamperId === bootcamper.id));
+
+          // DEV: log focus and resolution info per bootcamper to debug multi-perspective rendering
+          // Focus debug logs removed to keep console clean in the browser.
+          const self = lobby.find((p: Participant) => matchesParticipant(p, bootcamper));
           const isExpanded = expandedByDefault || (expandedLobby?.[bootcamper.id] || false);
+          const alreadyRendered = Boolean(game && game.id && renderedGameIds.has(game.id));
           
           const handleToggleClick = () => {
             if (onLobbyClick) {
@@ -332,16 +672,17 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                   <span className="text-xs text-green-400 font-medium">LIVE</span>
                 </div>
               </div>
-              {game && (
+              {shouldRenderDetails && !alreadyRendered && (
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs text-gray-500">
-                    Started {formatDistanceToNow(new Date(game.startedAt), { addSuffix: true })}
+                    Started {game?.startedAt ? formatDistanceToNow(new Date(game.startedAt), { addSuffix: true }) : 'recently'}
                   </span>
                   {(() => {
                     const fetched = currentChampions[bootcamper.id];
                     // Prioritize champion id/name from immediate fetch or participant data
                     const champId = fetched?.championId ?? self?.championId ?? null;
-                    const champName = fetched?.championName ?? self?.championName ?? (champId ? championNameCache[champId] : null);
+                    const rawChampName = fetched?.championName ?? self?.championName ?? (champId ? championNameCache[champId] : null);
+                    const champName = prettifyChampionName(rawChampName);
                     
                     // Show "Playing:" if we have champion data from any source
                     if (champId || champName) {
@@ -370,7 +711,7 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                   )}
                 </div>
               )}
-              {isExpanded && lobby.length > 0 && (
+              {isExpanded && lobby.length > 0 && !focusOnly && !alreadyRendered && (
                 <div className="mt-3 bg-gray-950/80 rounded p-2 border border-gray-800">
                   <div className="space-y-4">
                     {/* Split into two teams */}
@@ -404,24 +745,14 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                           </div>
                           <div className="space-y-1">
                             {teamPlayers.map((p: Participant) => {
-                              console.log("Rendering player:", p);
+                              // Rendering debug removed
                               
                               // Check if this participant is ANY bootcamper (not just the current one)
-                              const isBootcamper = inGameBootcampers.some(bc => 
-                                p.summonerName === bc.summonerName || 
-                                p.riotIdGameName === bc.summonerName ||
-                                p.riotId === bc.riotId ||
-                                p.puuid === bc.puuid
-                              );
-                              
+                              const isBootcamper = inGameBootcampers.some(bc => matchesParticipant(p, bc));
+
                               // Find the matching bootcamper to get their display name
-                              const matchingBootcamper = inGameBootcampers.find(bc => 
-                                p.summonerName === bc.summonerName || 
-                                p.riotIdGameName === bc.summonerName ||
-                                p.riotId === bc.riotId ||
-                                p.puuid === bc.puuid
-                              );
-                              
+                              const matchingBootcamper = inGameBootcampers.find(bc => matchesParticipant(p, bc));
+                              // Debug removed
                               // Format: Riot ID (Display Name) or just Riot ID/Summoner Name
                               let displayName: string;
                               if (matchingBootcamper) {
@@ -468,32 +799,37 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                                     className="flex-shrink-0"
                                   />
                                   <div className="flex items-center gap-1.5 flex-shrink-0">
-                                    {p.tier && getRankIconUrl(p.tier) && (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img
-                                        src={getRankIconUrl(p.tier) || ''}
-                                        alt={p.tier}
-                                        className="w-5 h-5"
-                                        title={`${p.tier} ${p.division || ''}`}
-                                      />
-                                    )}
-                                    <span className={`text-xs font-semibold ${
-                                      p.tier === 'CHALLENGER' ? 'text-yellow-400' :
-                                      p.tier === 'GRANDMASTER' ? 'text-red-400' :
-                                      p.tier === 'MASTER' ? 'text-purple-400' :
-                                      p.tier === 'DIAMOND' ? 'text-blue-400' :
-                                      p.tier === 'PLATINUM' ? 'text-cyan-400' :
-                                      p.tier === 'GOLD' ? 'text-yellow-500' :
-                                      p.tier === 'SILVER' ? 'text-gray-400' :
-                                      p.tier === 'BRONZE' ? 'text-orange-600' :
-                                      'text-gray-500'
-                                    }`}>
-                                      {p.tier && (p.tier === 'MASTER' || p.tier === 'GRANDMASTER' || p.tier === 'CHALLENGER') 
-                                        ? `${p.tier.charAt(0) + p.tier.slice(1).toLowerCase()} ${p.leaguePoints || 0} LP`
-                                        : p.tier && p.division 
-                                          ? `${p.tier.charAt(0) + p.tier.slice(1).toLowerCase()} ${p.division} ${p.leaguePoints || 0} LP` 
-                                          : (p.rank || 'Unranked')}
-                                    </span>
+                                    {/* Always show an emblem; getRankIconUrl falls back to unranked.png when tier is falsy */}
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={getRankIconUrl(p.tier) || ''}
+                                      alt={p.tier || 'Unranked'}
+                                      className="w-5 h-5"
+                                      title={`${p.tier || 'Unranked'} ${p.division || ''}`}
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      {/* Always show an emblem; getRankIconUrl falls back to unranked.png when tier is falsy */}
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={getRankIconUrl(p.tier) || ''} alt={p.tier || 'Unranked'} className="w-5 h-5 object-contain" />
+                                      <div className="flex flex-col gap-0">
+                                        <div className="flex items-center gap-1">
+                                          {(() => {
+                                            const rawTier = p.tier || '';
+                                            const up = rawTier ? rawTier.toUpperCase() : '';
+                                            const tierDisplay = rawTier ? (rawTier.charAt(0) + rawTier.slice(1).toLowerCase()) : (p.rank || 'Unranked');
+                                            const isMajor = up === 'MASTER' || up === 'GRANDMASTER' || up === 'CHALLENGER';
+                                            return (
+                                              <>
+                                                <span className={`text-xs font-semibold ${tierColors[up || ''] || 'text-gray-400'}`}>
+                                                  {tierDisplay}{!isMajor && p.division ? ` ${p.division}` : ''}
+                                                </span>
+                                                <span className="text-[11px] text-gray-400">{p.leaguePoints ?? 0} LP</span>
+                                              </>
+                                            );
+                                          })()}
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
                               );

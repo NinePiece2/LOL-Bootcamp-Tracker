@@ -79,7 +79,8 @@ export default function LeaderboardPage() {
   const [bootcampers, setBootcampers] = useState<LeaderboardEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showLobbyModal, setShowLobbyModal] = useState(false);
-  const [selectedBootcamper, setSelectedBootcamper] = useState<BootcamperWithGames | null>(null);
+  const [selectedLobbyGroup, setSelectedLobbyGroup] = useState<BootcamperWithGames[] | null>(null);
+  const [selectedLobbyFocusId, setSelectedLobbyFocusId] = useState<string | null>(null);
   const [isLoadingGameData, setIsLoadingGameData] = useState(false);
   const gridRef = useRef<GridComponent>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
@@ -770,9 +771,9 @@ export default function LeaderboardPage() {
       if (!isLive) return;
       
       setIsLoadingGameData(true);
-      setShowLobbyModal(true);
-      
-      try {
+  setShowLobbyModal(true);
+
+  try {
         // Fetch full bootcamper data with game details
         const listType = session?.user ? currentList : 'default';
         const response = await fetch(`/api/bootcampers?listType=${listType}`);
@@ -792,7 +793,12 @@ export default function LeaderboardPage() {
         }
         
         if (bootcamper) {
-          setSelectedBootcamper(bootcamper);
+          // Build a lobby group of all bootcampers sharing the same riotGameId so the modal
+          // shows the full match rather than a single player.
+          const gameId = bootcamper.games?.[0]?.riotGameId;
+          const group = gameId ? allBootcampers.filter(b => b.games?.[0]?.riotGameId === gameId) : [bootcamper];
+          setSelectedLobbyGroup(group);
+          setSelectedLobbyFocusId(bootcamper.id);
         }
       } catch (error) {
         console.error('Error fetching game data:', error);
@@ -1028,7 +1034,8 @@ export default function LeaderboardPage() {
           isOpen={showLobbyModal}
           onClose={() => {
             setShowLobbyModal(false);
-            setSelectedBootcamper(null);
+            setSelectedLobbyGroup(null);
+            setSelectedLobbyFocusId(null);
           }}
           title={isLoadingGameData ? "Loading game details..." : "Game Lobby Details"}
           maxWidth="6xl"
@@ -1037,11 +1044,13 @@ export default function LeaderboardPage() {
             <div className="flex items-center justify-center py-8">
               <div className="text-lg text-gray-400">Loading...</div>
             </div>
-          ) : selectedBootcamper ? (
+          ) : selectedLobbyGroup && selectedLobbyGroup.length > 0 ? (
             <div className="space-y-4">
               <LiveGamesSection
-                inGameBootcampers={[selectedBootcamper]}
+                inGameBootcampers={selectedLobbyGroup}
                 expandedByDefault={true}
+                focusBootcamperId={selectedLobbyFocusId}
+                focusOnly={true}
               />
             </div>
           ) : (

@@ -882,8 +882,6 @@ export default function Home() {
 
             {displayStreamers.length > 0 ? (
               <>
-                {/* Stream Control Toolbar removed — simplified UX */}
-
                 {/* Dynamic layouts based on stream count */}
                 <div
                   ref={streamGridRef}
@@ -1170,10 +1168,23 @@ export default function Home() {
         >
           {selectedLobbyId && (
             <div className="space-y-4">
-              <LiveGamesSection
-                inGameBootcampers={inGameBootcampers.filter(bc => bc.id === selectedLobbyId)}
-                expandedByDefault={true}
-              />
+              {
+                (() => {
+                  // Find the bootcamper that was selected, then pass the full group sharing the same riotGameId
+                  const selected = inGameBootcampers.find(b => b.id === selectedLobbyId);
+                  const group = selected && selected.games?.[0]?.riotGameId
+                    ? inGameBootcampers.filter(b => b.games?.[0]?.riotGameId === selected.games?.[0]?.riotGameId)
+                    : inGameBootcampers.filter(b => b.id === selectedLobbyId);
+                  return (
+                    <LiveGamesSection
+                      inGameBootcampers={group}
+                      expandedByDefault={true}
+                      focusBootcamperId={selectedLobbyId}
+                      focusOnly={true}
+                    />
+                  );
+                })()
+              }
             </div>
           )}
         </Modal>
