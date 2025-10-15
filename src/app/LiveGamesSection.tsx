@@ -3,6 +3,24 @@ import { formatDistanceToNow } from "date-fns";
 import { getChampionNameById } from "@/lib/utils";
 import { GameProfileLinks } from "@/components/game-profile-links";
 
+interface Perks{
+  perkIds: number[];
+  perkStyle: number;
+  perkSubStyle: number;
+}
+
+interface BannedChampion {
+  championId: number;
+  teamId: number;
+  pickTurn: number;
+}
+
+interface BannedChampion {
+  championId: number;
+  teamId: number;
+  pickTurn: number;
+}
+
 interface Participant {
   puuid: string;
   summonerId?: string;
@@ -20,6 +38,7 @@ interface Participant {
   division?: string | null;
   leaguePoints?: number;
   inferredRole?: string;
+  perks: Perks;
 }
 
 interface GameData {
@@ -27,6 +46,7 @@ interface GameData {
   startedAt: string;
   matchData?: {
     participants?: Participant[];
+    bannedChampions?: BannedChampion[];
   };
 }
 
@@ -75,6 +95,37 @@ const getRankIconUrl = (tier: string | null | undefined) => {
   if (!tier) return '/rank-images/unranked.png';
   const tierLower = tier.toLowerCase();
   return `/rank-images/${tierLower}.png`;
+};
+
+const getSummonerSpellIconUrl = (spellId?: number | null) => {
+  if (!spellId) return '';
+  const known: Record<number, string> = {
+    4: 'summoner_flash.png',
+    12: 'summoner_teleport_new.png',
+    14: 'summonerignite.png',
+    11: 'summoner_smite.png',
+    3: 'summoner_exhaust.png',
+    7: 'summoner_heal.png',
+    21: 'summonerbarrier.png',
+    // Ghost
+    6: 'summoner_haste.png',
+    // Cleanse
+    1: 'summoner_boost.png',
+  };
+
+  const file = known[spellId] || `summoner_${spellId}.png`;
+  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/data/spells/icons2d/${file}`;
+};
+
+const getKeystoneIconUrl = (perkIds?: number[] | null) => {
+  if (!perkIds || perkIds.length === 0) return '';
+  const id = perkIds[0];
+  return `https://opgg-static.akamaized.net/meta/images/lol/latest/perk/${id}.png`;
+};
+
+const getPerkStyleIconUrl = (styleId?: number | null) => {
+  if (!styleId) return '';
+  return `https://opgg-static.akamaized.net/meta/images/lol/latest/perkStyle/${styleId}.png`;
 };
 
 const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({ 
@@ -434,8 +485,20 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
 
                   if (champId) {
                     return (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={getChampionIconUrl(champId)} alt={String(champId)} className="w-full h-full object-cover" />
+                      (() => {
+                        const rawName = fetched?.championName ?? focusedSelf?.championName ?? (champId ? championNameCache[champId] : null);
+                        const titleName = prettifyChampionName(rawName) || '';
+                        return (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={getChampionIconUrl(champId)}
+                            alt={titleName || String(champId)}
+                            title={titleName || undefined}
+                            aria-label={titleName || undefined}
+                            className="w-full h-full object-cover"
+                          />
+                        );
+                      })()
                     );
                   }
 
@@ -468,7 +531,13 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                   return (
                     <div className="flex items-center gap-2 bg-gray-800/60 px-2 py-1 rounded">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={getChampionIconUrl(champId)} alt={champName || String(champId)} className="w-6 h-6 rounded-full border border-gray-700 bg-black" />
+                      <img
+                        src={getChampionIconUrl(champId)}
+                        alt={champName || String(champId)}
+                        title={champName || undefined}
+                        aria-label={champName || undefined}
+                        className="w-6 h-6 rounded-full border border-gray-700 bg-black"
+                      />
                       <span className="text-sm text-amber-300 font-medium">{champName}</span>
                     </div>
                   );
@@ -505,8 +574,27 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                 <div key={teamId} className="bg-gray-900/40 rounded-lg p-3">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <span className={`h-3 w-3 rounded-full ${teamId === 100 ? 'bg-blue-400' : 'bg-red-400'}`} />
-                      <span className="text-sm font-semibold text-gray-300">{teamId === 100 ? 'Blue Team' : 'Red Team'}</span>
+                          <span className={`h-3 w-3 rounded-full ${teamId === 100 ? 'bg-blue-400' : 'bg-red-400'}`} />
+                          <span className="text-sm font-semibold text-gray-300">{teamId === 100 ? 'Blue Team' : 'Red Team'}</span>
+                          {/* Render banned champions for this team as small squares */}
+                          <div className="flex items-center gap-1 ml-2">
+                            {(focusedGame.matchData?.bannedChampions || []).filter((b: BannedChampion) => b.teamId === teamId).map((ban: BannedChampion) => {
+                              const raw = championNameCache[ban.championId] || null;
+                              const nice = prettifyChampionName(raw) || '';
+                              return (
+                                <div key={`ban-${teamId}-${ban.pickTurn}-${ban.championId}`} className="w-7 h-7 rounded-sm border border-gray-700 overflow-hidden bg-black">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={getChampionIconUrl(ban.championId)}
+                                    alt={nice || String(ban.championId)}
+                                    title={nice || undefined}
+                                    aria-label={nice || undefined}
+                                    className="w-full h-full object-cover transform scale-110"
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
                     </div>
                     <span className="text-xs text-gray-400">{teamPlayers.length} players</span>
                   </div>
@@ -533,13 +621,39 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                                 <div className="flex items-center gap-2">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img src={`/positions/${roleImage}`} alt={p.inferredRole || 'Unknown'} className="w-6 h-6" />
-                                  <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-black border border-gray-700">
+                                  <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-black border border-gray-700 relative">
                                     {p.championId ? (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img src={getChampionIconUrl(p.championId)} alt={p.championName || String(p.championId)} className="w-10 h-10 object-cover" />
+                                      (() => {
+                                        const raw = p.championName || (p.championId ? championNameCache[p.championId] : null);
+                                        const nice = prettifyChampionName(raw) || '';
+                                        return (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img
+                                            src={getChampionIconUrl(p.championId)}
+                                            alt={nice || String(p.championId)}
+                                            title={nice || undefined}
+                                            aria-label={nice || undefined}
+                                            className="w-10 h-10 object-cover"
+                                          />
+                                        );
+                                      })()
                                     ) : (
                                       <div className="text-xs text-gray-400">{(p.summonerName || p.riotIdGameName || 'P').charAt(0).toUpperCase()}</div>
                                     )}
+                                  </div>
+                                  <div className="flex flex-col items-center gap-1">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={getKeystoneIconUrl(p.perks?.perkIds)} alt="keystone-style" className="w-5 h-5" />
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={getPerkStyleIconUrl(p.perks?.perkSubStyle)} alt="perk-substyle" className="w-4 h-4" />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex flex-col items-center gap-1">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={getSummonerSpellIconUrl(p.spell1Id)} alt={`spell-${p.spell1Id}`} className="w-5 h-5" />
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={getSummonerSpellIconUrl(p.spell2Id)} alt={`spell-${p.spell2Id}`} className="w-5 h-5" />
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -724,8 +838,26 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                       
                       return (
                         <div key={teamId}>
-                          <div className="text-xs font-semibold mb-2 text-gray-400">
-                            {teamId === 100 ? '🔵 Blue Team' : '🔴 Red Team'}
+                          <div className="text-xs font-semibold mb-2 text-gray-400 flex items-center gap-2">
+                            <span>{teamId === 100 ? '🔵 Blue Team' : '🔴 Red Team'}</span>
+                            <div className="flex items-center gap-1">
+                              {(game?.matchData?.bannedChampions || []).filter((b: BannedChampion) => b.teamId === teamId).map((ban: BannedChampion) => {
+                                const raw = championNameCache[ban.championId] || null;
+                                const nice = prettifyChampionName(raw) || '';
+                                return (
+                                  <div key={`ban-${teamId}-${ban.pickTurn}-${ban.championId}`} className="w-6 h-6 rounded-sm border border-gray-700 overflow-hidden bg-black">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={getChampionIconUrl(ban.championId)}
+                                      alt={nice || String(ban.championId)}
+                                      title={nice || undefined}
+                                      aria-label={nice || undefined}
+                                      className="w-full h-full object-cover transform scale-105"
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
                           <div className="space-y-1">
                             {teamPlayers.map((p: Participant) => {
@@ -764,12 +896,20 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                                     title={p.inferredRole || 'Unknown'}
                                   />
                                   {p.championId && (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                      src={getChampionIconUrl(p.championId)}
-                                      alt={p.championName || String(p.championId)}
-                                      className="w-6 h-6 rounded-full border border-gray-700 bg-black flex-shrink-0"
-                                    />
+                                    (() => {
+                                      const raw = p.championName || (p.championId ? championNameCache[p.championId] : null);
+                                      const nice = prettifyChampionName(raw) || '';
+                                      return (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                          src={getChampionIconUrl(p.championId)}
+                                          alt={nice || String(p.championId)}
+                                          title={nice || undefined}
+                                          aria-label={nice || undefined}
+                                          className="w-6 h-6 rounded-full border border-gray-700 bg-black flex-shrink-0 relative"
+                                        />
+                                      );
+                                    })()
                                   )}
                                   <span className="font-medium text-white truncate flex-1">{displayName}</span>
                                   <GameProfileLinks 
@@ -778,7 +918,21 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                                     size="sm"
                                     className="flex-shrink-0"
                                   />
-                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                  <div className="flex flex-col items-center gap-1">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={getKeystoneIconUrl(p.perks?.perkIds)} alt="keystone-style" className="w-5 h-5" />
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={getPerkStyleIconUrl(p.perks?.perkSubStyle)} alt="perk-substyle" className="w-4 h-4" />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex flex-col items-center gap-1">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={getSummonerSpellIconUrl(p.spell1Id)} alt={`spell-${p.spell1Id}`} className="w-5 h-5" />
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={getSummonerSpellIconUrl(p.spell2Id)} alt={`spell-${p.spell2Id}`} className="w-5 h-5" />
+                                    </div>
+                                  </div>
                                     {/* Always show an emblem; getRankIconUrl falls back to unranked.png when tier is falsy */}
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img

@@ -23,6 +23,12 @@ interface Bootcamper {
   twitchStreams: TwitchStream[];
 }
 
+interface Perks{
+  perkIds: number[];
+  perkStyle: number;
+  perkSubStyle: number;
+}
+
 interface Game {
   id: string;
   riotGameId: string;
@@ -47,6 +53,7 @@ interface Game {
       division?: string | null;
       leaguePoints?: number;
       inferredRole?: string;
+      perks: Perks;
     }>;
   };
 }

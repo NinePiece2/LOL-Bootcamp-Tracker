@@ -36,6 +36,12 @@ interface LeaderboardEntry {
   peakRank: RankData | null;
 }
 
+interface Perks{
+  perkIds: number[];
+  perkStyle: number;
+  perkSubStyle: number;
+}
+
 interface GameData {
   id: string;
   riotGameId: string;
@@ -60,6 +66,7 @@ interface GameData {
       division?: string | null;
       leaguePoints?: number;
       inferredRole?: string;
+      perks: Perks;
     }>;
   };
 }
@@ -499,8 +506,8 @@ export default function LeaderboardPage() {
               />
             </a>
             {isStreaming && (
-              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 z-10 bg-red-600 text-white text-[11px] px-1 py-[1px] rounded-full font-medium">
-                Live
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 z-10 bg-red-600 text-white text-[10px] px-1 py-[1px] rounded-full font-medium">
+                LIVE
               </div>
             )}
           </div>
