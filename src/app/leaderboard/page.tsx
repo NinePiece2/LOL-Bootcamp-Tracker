@@ -187,6 +187,22 @@ export default function LeaderboardPage() {
       console.error('scrollToBootcamper error', err);
     }
   };
+
+  const currentRankValueAccessor = (field: string, data: unknown): string => {
+    const r = (data as LeaderboardEntry).soloQueue || (data as LeaderboardEntry).flexQueue;
+    if (!r) return '';
+    const tierDisplay = r.tier.charAt(0) + r.tier.slice(1).toLowerCase();
+    const division = r.rank ? ` ${r.rank}` : '';
+    return `${tierDisplay}${division} ${r.leaguePoints} LP`.trim();
+  };
+
+  const peakRankValueAccessor = (field: string, data: unknown): string => {
+    const r = (data as LeaderboardEntry).peakRank;
+    if (!r) return '';
+    const tierDisplay = r.tier.charAt(0) + r.tier.slice(1).toLowerCase();
+    const division = r.rank ? ` ${r.rank}` : '';
+    return `${tierDisplay}${division} ${r.leaguePoints} LP`.trim();
+  };
   
   // Set initial list based on localStorage or user permissions
   const getInitialList = (): 'default' | 'user' => {
@@ -974,6 +990,7 @@ export default function LeaderboardPage() {
               width="250"
               textAlign="Center"
               template={rankTemplate}
+              valueAccessor={currentRankValueAccessor}
             />
             <ColumnDirective
               field="peakRank"
@@ -981,6 +998,7 @@ export default function LeaderboardPage() {
               width="140"
               textAlign="Center"
               template={peakRankTemplate}
+              valueAccessor={peakRankValueAccessor}
             />
             <ColumnDirective
               field="soloQueue.winRate"
