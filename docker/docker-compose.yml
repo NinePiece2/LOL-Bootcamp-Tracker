@@ -33,15 +33,11 @@ services:
       - postgres
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      DB_HOST: postgres
+      DB_PORT: 5432
       ADMIN_USERNAME: ${ADMIN_USERNAME}
       NODE_ENV: production
-    entrypoint: ["/bin/sh", "-c"]
-    command: |
-      echo "Waiting for database to be ready..." && \
-      until pg_isready -h postgres -p 5432 -U ${POSTGRES_USER}; do sleep 2; done && \
-      echo "Running migrations..." && \
-      ./migrate.sh && \
-      echo "Migration complete."
+    command: ["sh", "-c", "./migrate.sh"]
     restart: "no"
     networks:
       - app-network

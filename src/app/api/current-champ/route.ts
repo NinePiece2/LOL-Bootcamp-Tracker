@@ -40,7 +40,6 @@ export async function GET(request: Request) {
         });
         
         if (bootcamper?.linkedToDefaultId) {
-          // This is a user reference, get game from default bootcamper
           gameRecord = await findGameByBootcamperId(bootcamper.linkedToDefaultId);
         }
       }
@@ -50,7 +49,6 @@ export async function GET(request: Request) {
       if (bc) {
         gameRecord = await findGameByBootcamperId(bc.id);
         
-        // If no game and this is a user reference, check default bootcamper
         if (!gameRecord && bc.linkedToDefaultId) {
           gameRecord = await findGameByBootcamperId(bc.linkedToDefaultId);
         }

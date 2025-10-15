@@ -83,8 +83,8 @@ This guide will walk you through setting up the League Bootcamp Tracker from scr
 
 If you haven't already:
 ```bash
-git clone <your-repo-url>
-cd LoL-KR-Bootcamp-Tracker
+git clone https://github.com/NinePiece2/LOL-Bootcamp-Tracker
+cd LOL-KR-Bootcamp-Tracker
 ```
 
 ### 2. Install Dependencies
@@ -179,7 +179,7 @@ This starts the BullMQ workers that poll the Riot API for live games.
 The system will:
 - Fetch the summoner's data from Riot API
 - Link their Twitch account (if provided)
-- Begin polling for live games every 30 seconds
+- Begin polling for live games every 60 seconds
 
 ## Step 6: Testing
 
@@ -207,8 +207,6 @@ For local development, Twitch EventSub webhooks require a publicly accessible UR
    ```env
    TWITCH_CALLBACK_URL="https://your-ngrok-url.ngrok.io/api/webhooks/twitch"
    ```
-
-2. **Deploy to a staging environment** (Vercel, Railway, etc.)
 
 ## Troubleshooting
 
@@ -271,7 +269,7 @@ Error: Cannot find module
 
 **Solution:**
 - Ensure all dependencies are installed: `npm install`
-- Check that `workers.mjs` is executable
+- Check that `workers.ts` is executable
 - Verify Redis is running
 
 ## Next Steps

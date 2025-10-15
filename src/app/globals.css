@@ -138,12 +138,10 @@
   color: #ffffff !important;
 }
 
-/* Force all grid text to be white */
 .e-grid * {
   color: #ffffff !important;
 }
 
-/* Fix search/filter row backgrounds */
 .e-grid .e-filterbar {
   background: #0a0a0a !important;
 }
@@ -166,7 +164,6 @@
   opacity: 0.6 !important;
 }
 
-/* Center all grid cell content */
 .e-grid .e-rowcell {
   text-align: center !important;
   vertical-align: middle !important;
@@ -181,7 +178,6 @@
   justify-content: center !important;
 }
 
-/* Force dark mode for all Syncfusion popups and dropdowns */
 .e-popup,
 .e-ddl,
 .e-dropdownbase,
@@ -203,7 +199,6 @@
   background: #2a2a2a !important;
 }
 
-/* Force dark background for all grid wrapper elements */
 .e-gridcontent,
 .e-gridheader,
 .e-gridfooter {
@@ -333,7 +328,6 @@
   }
 }
 
-/* Modern card improvements */
 .card-modern {
   background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
   border: 1px solid rgba(55, 65, 81, 0.5);

@@ -471,6 +471,9 @@ spec:
             value: "5432"
           - name: NODE_ENV
             value: "production"
+          - name: ADMIN_USERNAME
+            value: "ninepiece2"
+          
         resources:
           requests:
             cpu: "100m"

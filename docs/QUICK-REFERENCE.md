@@ -144,19 +144,6 @@ curl -X POST http://localhost:3000/api/bootcampers \
 curl http://localhost:3000/api/bootcampers
 ```
 
-### Filter Bootcampers
-
-```bash
-# By status
-curl "http://localhost:3000/api/bootcampers?status=in_game"
-
-# By region
-curl "http://localhost:3000/api/bootcampers?region=kr"
-
-# By role
-curl "http://localhost:3000/api/bootcampers?role=pro"
-```
-
 ### Subscribe to Twitch EventSub
 
 ```bash
@@ -216,20 +203,6 @@ NODE_ENV=development
 ```
 
 In `src/lib/db.ts`, Prisma is already configured to log queries in development.
-
-### Test Riot API Connection
-
-```bash
-# Test via API route (create this file if needed)
-curl http://localhost:3000/api/test/riot
-```
-
-### Test Twitch API Connection
-
-```bash
-# Test via API route
-curl http://localhost:3000/api/test/twitch
-```
 
 ## 🔄 Reset Everything
 

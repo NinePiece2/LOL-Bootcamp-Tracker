@@ -10,9 +10,6 @@ These scripts generate secure cryptographically random secrets that are base64 e
 
 **Usage:**
 ```bash
-# Make executable (first time only)
-chmod +x scripts/generate-secrets.sh
-
 # Run the script
 ./scripts/generate-secrets.sh
 ```

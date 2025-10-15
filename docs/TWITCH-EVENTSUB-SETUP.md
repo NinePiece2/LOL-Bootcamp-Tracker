@@ -15,7 +15,8 @@ If you need to test Twitch EventSub functionality during development, you'll nee
    TWITCH_CALLBACK_URL=https://your-ngrok-url.ngrok.io/api/webhooks/twitch
    TWITCH_EVENTSUB_SECRET=your-secret-here
    ```
-5. **Restart your dev server**
+5. **Add the URL to the twitch developer dashboard**
+6. **Restart your dev server**
 
 ## Production Setup
 

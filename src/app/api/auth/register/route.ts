@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
         email,
         password: hashedPassword,
         name: name || null,
-        isAdmin: false, // New users are not admin by default
+        isAdmin: false,
       },
       select: {
         id: true,

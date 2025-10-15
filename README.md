@@ -1,6 +1,43 @@
 # League of Legends Korean Bootcamp Tracker
 
+## Table of Contents
+- [League of Legends Korean Bootcamp Tracker](#league-of-legends-korean-bootcamp-tracker)
+  - [Table of Contents](#table-of-contents)
+  - [Want to deploy if for yourself?](#want-to-deploy-if-for-yourself)
+  - [Features](#features)
+  - [Tech Stack](#tech-stack)
+  - [Prerequisites](#prerequisites)
+  - [Setup](#setup)
+    - [1. Clone and Install Dependencies](#1-clone-and-install-dependencies)
+    - [2. Configure Environment Variables](#2-configure-environment-variables)
+    - [3. Set Up Database](#3-set-up-database)
+    - [4. Start Redis](#4-start-redis)
+    - [5. Run the Application](#5-run-the-application)
+  - [Usage](#usage)
+    - [Adding Bootcampers](#adding-bootcampers)
+    - [Dashboard Features](#dashboard-features)
+  - [API Endpoints](#api-endpoints)
+    - [Bootcampers](#bootcampers)
+    - [Webhooks](#webhooks)
+  - [How It Works](#how-it-works)
+    - [Game Detection](#game-detection)
+    - [Stream Detection](#stream-detection)
+    - [Summoner Name Updates](#summoner-name-updates)
+    - [Rate Limiting](#rate-limiting)
+  - [Project Structure](#project-structure)
+  - [Syncfusion License](#syncfusion-license)
+  - [Deployment](#deployment)
+    - [Prerequisites for Production](#prerequisites-for-production)
+    - [Deployment Options](#deployment-options)
+      - [**Kubernetes:**](#kubernetes)
+      - [**Docker Compose (recommended):**](#docker-compose-recommended)
+  - [Future Enhancements](#future-enhancements)
+  - [Contributing](#contributing)
+
 A real-time dashboard for tracking League of Legends players during their Korean bootcamp sessions. Features live game detection via Riot API, Twitch stream integration, and multistream viewing.
+
+## Want to deploy if for yourself?
+Use the Docker Compose or Kubernetes configs given [here](#docker-compose-recommended)
 
 ## Features
 
@@ -266,32 +303,34 @@ Get a free community license: https://www.syncfusion.com/sales/communitylicense
 ### Prerequisites for Production
 
 1. **PostgreSQL database** (e.g., Supabase, Railway, or self-hosted)
-2. **Redis instance** (e.g., Redis Cloud, Upstash)
+2. **Redis instance** (e.g., Redis Cloud, Upstash, or self-hosted)
 3. **Publicly accessible URL** for Twitch webhooks
 4. **SSL certificate** (Twitch EventSub requires HTTPS)
 
-### Environment Variables
+<!-- ### Environment Variables
 
 Update production environment variables:
 - `DATABASE_URL` - Your production PostgreSQL connection string
 - `REDIS_URL` - Your production Redis connection string  
 - `TWITCH_CALLBACK_URL` - Your production webhook URL (must be HTTPS)
-- `NEXT_PUBLIC_APP_URL` - Your production app URL
+- `NEXT_PUBLIC_APP_URL` - Your production app URL -->
 
 ### Deployment Options
 
-**Kubernetes (recommended):**
+#### **Kubernetes:**
 ```bash
 kubectl apply -f kubernetes/
 ```
 
-**Docker:**
-```bash
-docker build -t lol-bootcamp-tracker .
-docker run -p 3000:3000 lol-bootcamp-tracker
-```
+#### **Docker Compose (recommended):**
+(Assuming you have docker and docker compose installed)
+1. Clone the repo `git clone https://github.com/NinePiece2/LOL-Bootcamp-Tracker`
+2. Go to the docker directory `cd LOL-Bootcamp-Tracker/docker`
+3. Make SSL certificates for nginx `mkdir certs & openssl req -x509 -newkey rsa:2048 -keyout certs/ssl.key -out certs/ssl.crt -days 36500 -nodes -subj "/CN=localhost"`.
+4. Generate secret for the app `../scripts/generate-secrets.sh`.
+5. Edit the `.env` file with the secrets, Riot API Key, Twitch API key, deployed url and the admin user.
+6. Run the containers `docker compose up -d`
 
-Note: You'll need to run workers separately or use a process manager like PM2.
 
 ## Future Enhancements
 

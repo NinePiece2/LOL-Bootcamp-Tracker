@@ -29,8 +29,6 @@ import { useToast } from './ui/toast';
 
 const formSchema = z.object({
   selectedBootcamperIds: z.array(z.string()).min(1, 'Please select at least one bootcamper'),
-  // Dates are optional when adding from the default list — the default bootcamper's dates
-  // will be used if the user doesn't provide overrides.
   startDate: z.string().optional(),
   plannedEndDate: z.string().optional(),
 });
@@ -74,15 +72,12 @@ export function SelectBootcamperDialog({
     },
   });
 
-  // Fetch default bootcampers
   useEffect(() => {
     if (open) {
       (async () => {
         try {
-          // Fetch default bootcampers first so we can match IDs
           const defaults = await fetchDefaultBootcampers();
 
-          // Then fetch user's current bootcampers and remove any defaults the user already has
           const res = await fetch('/api/bootcampers?listType=user');
           if (res.ok) {
             const userList = await res.json();
@@ -115,7 +110,6 @@ export function SelectBootcamperDialog({
     }
   }, [open, form]);
 
-  // Filter bootcampers based on search
   useEffect(() => {
     if (!searchQuery.trim()) {
       setFilteredBootcampers(defaultBootcampers);
@@ -133,7 +127,6 @@ export function SelectBootcamperDialog({
     }
   }, [searchQuery, defaultBootcampers]);
 
-  // Update form when selection changes
   useEffect(() => {
     form.setValue('selectedBootcamperIds', Array.from(selectedBootcampers));
   }, [selectedBootcampers, form]);
@@ -165,10 +158,8 @@ export function SelectBootcamperDialog({
 
   const handleSelectAll = () => {
     if (selectedBootcampers.size === filteredBootcampers.length) {
-      // Deselect all
       setSelectedBootcampers(new Set());
     } else {
-      // Select all visible
       setSelectedBootcampers(new Set(filteredBootcampers.map(b => b.id)));
     }
   };
@@ -182,7 +173,6 @@ export function SelectBootcamperDialog({
       const results: string[] = [];
       const errors: string[] = [];
 
-      // Fetch the user's current bootcampper associations once to avoid attempting duplicates
       let existingUserList: Array<{ linkedToDefaultId?: string | null }> = [];
       try {
         const res = await fetch('/api/bootcampers?listType=user');
@@ -190,7 +180,6 @@ export function SelectBootcamperDialog({
           existingUserList = await res.json();
         }
       } catch (err) {
-        // If we can't fetch the user's list, proceed conservatively (we'll attempt adds and let the server handle duplicates)
         console.warn('Could not fetch user bootcampers for duplicate check:', err);
       }
 
@@ -199,12 +188,10 @@ export function SelectBootcamperDialog({
       const toAdd = values.selectedBootcamperIds.filter((id) => !existingDefaultIds.has(id));
       const skipped = values.selectedBootcamperIds.length - toAdd.length;
 
-      // Add each selected (but new) bootcamper
       for (const bootcamperId of toAdd) {
         const selectedBootcamper = defaultBootcampers.find((b) => b.id === bootcamperId);
         if (!selectedBootcamper) continue;
 
-        // Use the form-provided dates if available, otherwise fall back to the default bootcamper's dates
         const startToSend = values.startDate && values.startDate.trim() ? values.startDate : selectedBootcamper.startDate;
         const plannedToSend = values.plannedEndDate && values.plannedEndDate.trim() ? values.plannedEndDate : selectedBootcamper.plannedEndDate;
 
@@ -232,7 +219,6 @@ export function SelectBootcamperDialog({
         }
       }
 
-      // Compose summary message
       if (errors.length > 0) {
         toast({
           title: 'Add completed with errors',
@@ -247,7 +233,6 @@ export function SelectBootcamperDialog({
         });
       }
 
-      // Reset and close if at least one was successful
       if (results.length > 0) {
         form.reset();
         setSelectedBootcampers(new Set());
@@ -298,7 +283,6 @@ export function SelectBootcamperDialog({
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden flex flex-col space-y-4">
-          {/* Search and Select All */}
           <div className="space-y-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -329,7 +313,6 @@ export function SelectBootcamperDialog({
             )}
           </div>
 
-          {/* Bootcamper List */}
           <div className="flex-1 overflow-y-auto space-y-2 max-h-[300px]">
             {filteredBootcampers.length === 0 ? (
               <div className="text-center text-gray-500 py-8">
@@ -421,7 +404,6 @@ export function SelectBootcamperDialog({
             )}
           </div>
 
-          {/* Form for dates */}
           {someSelected && (
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 border-t pt-4">

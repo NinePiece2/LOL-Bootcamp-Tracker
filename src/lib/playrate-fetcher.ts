@@ -59,16 +59,13 @@ export async function fetchChampionPlayrates(): Promise<PlayrateResponse> {
     const merakiRole = allMerakiRoles[i];
     const jsonRole = allJsonRoles[i];
 
-    // Extract role data using regex (matching Python script)
     const regex = new RegExp(`${jsonRole}":(.*?})`, 'g');
     const matches = dataText.match(regex);
 
     if (matches && matches.length > 0) {
       const match = matches[0];
-      // Remove role prefix and parse key-value pairs
       const roleData = match.replace(`${jsonRole}":`, '').replace(/\s/g, '');
 
-      // Parse the object manually (keys aren't in quotes)
       const pairs = roleData
         .substring(1, roleData.length - 1)
         .split(',')
@@ -86,7 +83,6 @@ export async function fetchChampionPlayrates(): Promise<PlayrateResponse> {
     }
   }
 
-  // Get patch version
   const versionResponse = await fetch(
     'https://raw.communitydragon.org/latest/content-metadata.json'
   );

@@ -167,7 +167,7 @@ export class RiotAPIClient {
   ): Promise<RiotSummonerDTO> {
     const [gameName, tagLine] = riotId.includes('#') 
       ? riotId.split('#')
-      : [riotId, region.toUpperCase()]; // Default tagLine to region if not provided
+      : [riotId, region.toUpperCase()];
     
     const platformRegion = REGION_TO_PLATFORM[region];
     const account = await this.getAccountByRiotId(platformRegion, gameName, tagLine);

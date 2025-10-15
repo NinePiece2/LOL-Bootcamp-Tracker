@@ -67,7 +67,6 @@ const getChampionIconUrl = (championId?: number | null) => {
 // Make prettified champion names like "TwistedFate" -> "Twisted Fate"
 const prettifyChampionName = (name?: string | null) => {
   if (!name) return null;
-  // Insert a space between a lowercase letter and an uppercase letter (camel-case split)
   return name.replace(/([a-z])([A-Z])/g, '$1 $2');
 };
 
@@ -190,7 +189,6 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
               }));
             } else {
               console.error('Failed to identify roles:', response.statusText);
-              // Fallback: use inferredRole from matchData if available
               participantsWithRoles = enrichedParticipants.map(p => ({
                 ...p,
                 inferredRole: p.inferredRole || 'MIDDLE',
@@ -198,7 +196,6 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
             }
           } catch (error) {
             console.error('Error calling role identification API:', error);
-            // Fallback: use inferredRole from matchData if available
             participantsWithRoles = enrichedParticipants.map(p => ({
               ...p,
               inferredRole: p.inferredRole || 'MIDDLE',
@@ -218,7 +215,6 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
         })
       );
 
-      // Update the enriched map
       setEnrichedBootcampers(prev => {
         const newMap = new Map(prev);
         enriched.forEach(bootcamper => {
@@ -299,8 +295,6 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
     return () => { cancelled = true; };
   }, [inGameBootcampers]);
 
-    // Build a fast lookup map from participant identifiers to their GameData so
-    // we can quickly resolve a bootcamper's game even if their own `games` is empty.
     const participantGameMap = new Map<string, GameData>();
     const normalizeKey = (s?: string | null) => {
       if (!s) return null;
@@ -463,7 +457,7 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
             <div className="flex items-center gap-3">
               <div className="inline-flex items-center gap-2 bg-red-600/10 border border-red-600 text-red-300 text-xs px-2 py-1 rounded-full">
                 <span className="w-2 h-2 rounded-full bg-red-500" />
-                LIVE
+                In Game
               </div>
               {(() => {
                 const fetched = currentChampions[focusedBootcamper!.id];
@@ -537,7 +531,6 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                             return (
                               <div key={p.puuid || p.summonerId || Math.random()} className={`flex items-center gap-3 p-2 rounded-md hover:bg-gray-900/40 transition ${isBootcamper ? 'ring-2 ring-amber-600/30 bg-amber-600/6' : ''}`}>
                                 <div className="flex items-center gap-2">
-                                  {/* role icon */}
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img src={`/positions/${roleImage}`} alt={p.inferredRole || 'Unknown'} className="w-6 h-6" />
                                   <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-black border border-gray-700">
@@ -607,11 +600,8 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
             if (bootcamper.puuid && participantGameMap.has(bootcamper.puuid)) return participantGameMap.get(bootcamper.puuid) || null;
             if (bootcamper.summonerName && participantGameMap.has(bootcamper.summonerName.toLowerCase())) return participantGameMap.get(bootcamper.summonerName.toLowerCase()) || null;
             if ((bootcamper.riotId) && participantGameMap.has(bootcamper.riotId.toLowerCase())) return participantGameMap.get(bootcamper.riotId.toLowerCase()) || null;
-            // try matching by riotIdGameName too if present on participants
             return null;
           };
-
-          // use shared matchesParticipant defined above
 
           if (!game) {
             // Try fast lookup from map built earlier
@@ -622,7 +612,6 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
           }
 
           if (!game) {
-            // Last-resort: scan enriched bootcampers for matching participant
             for (const [, val] of enrichedBootcampers) {
               const g = val.games?.[0];
               if (g?.matchData?.participants?.some(p => matchesParticipant(p, bootcamper))) {
@@ -633,12 +622,8 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
           }
 
           const lobby = game?.matchData?.participants || [];
-          // Decide whether this per-row details block should render. When in focusOnly
-          // mode we do NOT render per-row details here (the focused lobby is rendered once above).
           const shouldRenderDetails = Boolean(game && !focusOnly && (!focusBootcamperId || focusBootcamperId === bootcamper.id));
 
-          // DEV: log focus and resolution info per bootcamper to debug multi-perspective rendering
-          // Focus debug logs removed to keep console clean in the browser.
           const self = lobby.find((p: Participant) => matchesParticipant(p, bootcamper));
           const isExpanded = expandedByDefault || (expandedLobby?.[bootcamper.id] || false);
           const alreadyRendered = Boolean(game && game.id && renderedGameIds.has(game.id));
@@ -714,7 +699,6 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
               {isExpanded && lobby.length > 0 && !focusOnly && !alreadyRendered && (
                 <div className="mt-3 bg-gray-950/80 rounded p-2 border border-gray-800">
                   <div className="space-y-4">
-                    {/* Split into two teams */}
                     {[100, 200].map((teamId) => {
                       // Define role order for sorting (using API position names)
                       const roleOrder = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
@@ -745,14 +729,11 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                           </div>
                           <div className="space-y-1">
                             {teamPlayers.map((p: Participant) => {
-                              // Rendering debug removed
-                              
                               // Check if this participant is ANY bootcamper (not just the current one)
                               const isBootcamper = inGameBootcampers.some(bc => matchesParticipant(p, bc));
 
                               // Find the matching bootcamper to get their display name
                               const matchingBootcamper = inGameBootcampers.find(bc => matchesParticipant(p, bc));
-                              // Debug removed
                               // Format: Riot ID (Display Name) or just Riot ID/Summoner Name
                               let displayName: string;
                               if (matchingBootcamper) {
@@ -775,7 +756,6 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                                   key={p.puuid || p.summonerId || Math.random()} 
                                   className={`flex items-center gap-2 p-2 rounded ${isBootcamper ? 'bg-blue-900/30 border border-blue-700' : 'hover:bg-gray-900'}`}
                                 >
-                                  {/* Role Icon */}
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img
                                     src={`/positions/${roleImage}`}

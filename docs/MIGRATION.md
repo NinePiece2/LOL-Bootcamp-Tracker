@@ -12,29 +12,7 @@ This container handles database schema initialization and migrations for the LoL
 ## Container Images
 
 - **Main App**: `ninepiece2/lol-bootcamp-tracker:latest`
-- **Migration**: `ninepiece2/lol-bootcamp-tracker-migrate:latest`
-
-## Usage in Kubernetes
-
-### Automatic Migration (Recommended)
-```bash
-# Run migration job before app deployment
-kubectl apply -f Kubernetes/db-migration-job.yaml
-kubectl wait --for=condition=complete job/db-migration -n lol-bootcamp-tracker
-```
-
-### Manual Migration
-```bash
-# For schema resets or manual migrations
-kubectl apply -f Kubernetes/db-migration-job.yaml
-# Use the db-schema-reset job for destructive operations
-```
-
-### Deployment Script
-```bash
-# Use the automated deployment script
-./deploy.sh
-```
+- **Migration**: `ninepiece2/lol-bootcamp-tracker:migrate`
 
 ## Environment Variables
 
@@ -52,16 +30,6 @@ kubectl apply -f Kubernetes/db-migration-job.yaml
 - **Safe schema updates** with Prisma
 - **Automatic retries** if database is not ready
 - **Logging** for troubleshooting
-
-## Build Commands
-
-```bash
-# Build migration container
-docker build -f Dockerfile.migrate -t ninepiece2/lol-bootcamp-tracker-migrate:latest .
-
-# Push to registry
-docker push ninepiece2/lol-bootcamp-tracker-migrate:latest
-```
 
 ## Deployment Order
 

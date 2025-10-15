@@ -66,8 +66,7 @@ export default function Home() {
   const [selectedStreamMode, setSelectedStreamMode] = useState<'all' | 'teammates'>('all');
   const [showLobbyModal, setShowLobbyModal] = useState(false);
   const [selectedLobbyId, setSelectedLobbyId] = useState<string | null>(null);
-  const [selectedStreamers, setSelectedStreamers] = useState<string[]>([]); // Array of bootcamper IDs for ordering
-  // dragging state: which stream id is being dragged, and where it would drop
+  const [selectedStreamers, setSelectedStreamers] = useState<string[]>([]);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -78,16 +77,13 @@ export default function Home() {
   const [previewStreamer, setPreviewStreamer] = useState<Bootcamper | null>(null);
   const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null);
   
-  // Set initial list based on localStorage or user permissions
   const getInitialList = (): 'default' | 'user' => {
-    // Try to get from localStorage first (client-side only)
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('bootcamp-list-preference');
       if (stored === 'default' || stored === 'user') {
         return stored;
       }
     }
-    // Fall back to user permissions
     if (!session?.user) return 'default';
     return session.user.isAdmin ? 'default' : 'user';
   };
@@ -249,12 +245,9 @@ export default function Home() {
     .filter((s): s is Bootcamper => s !== undefined)
     .slice(0, 4);
 
-  // If the user has explicitly interacted with selection controls, we honor selectedStreamers
-  // (which can be empty, resulting in a blank canvas). Otherwise we fall back to showing
-  // the default displayStreamers (up to 4).
   let streamsToShow: Bootcamper[];
   if (explicitSelection) {
-    streamsToShow = selectedStreams; // may be empty (blank canvas)
+    streamsToShow = selectedStreams;
   } else {
     streamsToShow = selectedStreams.length > 0 ? selectedStreams : displayStreamers.slice(0, 4);
   }
@@ -278,13 +271,9 @@ export default function Home() {
     </div>
   );
 
-  // Grid ref to compute drop positions reliably (works around iframe capturing events)
   const streamGridRef = useRef<HTMLDivElement | null>(null);
-  // Refs for callbacks used by window-level drag handlers to avoid referencing
-  // functions before they're declared (prevents initialization order issues).
   const computeDropRef = useRef<((x: number) => number) | null>(null);
   const addExternalRef = useRef<((id: string, idx?: number) => boolean) | null>(null);
-  // Portal element for rendering the floating preview at the document body level
   const previewPortalElRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -308,13 +297,8 @@ export default function Home() {
     const container = streamGridRef.current;
     if (!container) return 0;
 
-    // Find visible stream tiles (they have data-stream-id). We rely on
-    // the rendered DOM order to reflect the visual order (including
-    // cases where one tile spans multiple columns). Using element
-    // center X positions and midpoints between centers gives stable
-    // slot boundaries that match visual layout.
     const children = Array.from(container.querySelectorAll('[data-stream-id]')) as HTMLElement[];
-  const itemCount = Math.max(0, children.length);
+    const itemCount = Math.max(0, children.length);
 
     // If no items, there's only slot 0
     if (itemCount === 0) return 0;
@@ -380,14 +364,11 @@ export default function Home() {
 
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, index: number, id: string) => {
-    // start an internal drag of an already-selected stream
     try {
       // store a hint for external listeners if any
       e.dataTransfer?.setData('text/plain', id);
       e.dataTransfer!.effectAllowed = 'move';
-    } catch {
-      // ignore
-    }
+    } catch {}
     // If user hasn't explicitly selected streams yet, initialize from current view
     if (selectedStreamers.length === 0) {
       const initial = streamsToShow.map(s => s.id).slice(0, 4);
@@ -400,16 +381,13 @@ export default function Home() {
     // set preview streamer if possible
     const s = streamsToShow.find(s => s.id === id);
     if (s) setPreviewStreamer(s);
-    // Set initial preview position near the pointer when drag starts
     try {
       const x = (e as React.DragEvent).clientX;
       const y = (e as React.DragEvent).clientY;
-      // bring preview closer to cursor for more precise dragging
       setPreviewPos({ x: x + 6, y: y + 6 });
     } catch {}
   };
 
-  // Helper to start drag from non-drag events (mouse down / touchstart)
   const startDrag = (id: string, index: number, coords?: { x: number; y: number } | null) => {
     if (selectedStreamers.length === 0) {
       const initial = streamsToShow.map(s => s.id).slice(0, 4);
@@ -424,13 +402,9 @@ export default function Home() {
     if (coords) setPreviewPos({ x: coords.x + 6, y: coords.y + 6 });
   };
 
-  // Note: Bootcamper cards set 'text/bootcamper' on dragStart themselves.
-
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    // Only show possible drop positions when dragging a selected stream
     if (!isDragging || !draggedId) return;
-    // prevent noop
     if (dropIndex === index) return;
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
     setDropIndex(index);
@@ -448,11 +422,7 @@ export default function Home() {
   const handleAddToggle = (bootcamper: Bootcamper) => {
     // Only allow adding if the bootcamper is currently streaming live
     const isStreaming = !!(bootcamper.twitchStreams && bootcamper.twitchStreams.length > 0 && bootcamper.twitchStreams[0].live);
-    // If it's not streaming and not currently selected, ignore (can't add)
     if (!isStreaming && !selectedStreamers.includes(bootcamper.id)) return;
-    // If this is a default-displayed streamer (no explicit selection yet) and the
-    // id is not in selectedStreamers, we want to switch to explicit selection mode
-    // and initialize selectedStreamers to the currently visible streams minus this id.
     if (!explicitSelection && !selectedStreamers.includes(bootcamper.id) && streamsToShow.some(s => s.id === bootcamper.id)) {
       const initial = streamsToShow.map(s => s.id).filter(id => id !== bootcamper.id).slice(0, 4);
       setExplicitSelection(true);
@@ -488,7 +458,6 @@ export default function Home() {
     // External drop (new bootcamper id)
     const bootcamperId = e.dataTransfer?.getData('text/bootcamper');
     if (bootcamperId) {
-      // Ensure this bootcamper is currently a live streamer
       const candidate = liveStreamers.find(s => s.id === bootcamperId);
       if (!candidate || !candidate.twitchStreams || candidate.twitchStreams.length === 0 || !candidate.twitchStreams[0].live) {
         setDraggedId(null);
@@ -496,7 +465,6 @@ export default function Home() {
         setIsDragging(false);
         return;
       }
-      // If already selected, ignore
       if (selectedStreamers.includes(bootcamperId)) {
         setDraggedId(null);
         setDropIndex(null);
@@ -505,7 +473,6 @@ export default function Home() {
       }
 
       if (selectedStreamers.length >= 4) {
-        // max reached
         setDraggedId(null);
         setDropIndex(null);
         setIsDragging(false);
@@ -526,12 +493,10 @@ export default function Home() {
       return;
     }
 
-    // Internal move: finalize reorder using draggedId and dropIndex (or passed index)
     const internalId = e.dataTransfer?.getData('text/plain') || draggedId;
     const targetIndex = typeof index === 'number' ? index : (dropIndex ?? null);
 
     if (!internalId) {
-      // nothing to do
       setDraggedId(null);
       setDropIndex(null);
       setIsDragging(false);
@@ -550,7 +515,6 @@ export default function Home() {
 
     const currentOrder = [...selectedStreamers];
     const existingIndex = currentOrder.indexOf(internalId);
-    // If it's not in the list (shouldn't happen for internal drags), ignore
     if (existingIndex === -1) {
       setDraggedId(null);
       setDropIndex(null);
@@ -558,7 +522,6 @@ export default function Home() {
       return;
     }
 
-    // Remove the dragged id
     currentOrder.splice(existingIndex, 1);
 
     // Compute insertion index
@@ -580,7 +543,6 @@ export default function Home() {
 
   // Helper to add an external bootcamper id at a given index (used by grid onDrop)
   const addExternalBootcamperAt = useCallback((bootcamperId: string, index?: number) => {
-    // Validate live
     const candidate = liveStreamers.find(s => s.id === bootcamperId);
     if (!candidate || !candidate.twitchStreams || candidate.twitchStreams.length === 0 || !candidate.twitchStreams[0].live) {
       setDraggedId(null);
@@ -622,18 +584,13 @@ export default function Home() {
     return true;
   }, [liveStreamers, selectedStreamers, setSelectedStreamers, setExplicitSelection]);
 
-  // expose via ref for window-level handlers
   useEffect(() => { addExternalRef.current = addExternalBootcamperAt; }, [addExternalBootcamperAt]);
-
-  // clearSelection removed — clearing is handled via explicit selection controls or removeStream
 
   const handleLobbyClick = (bootcamperId: string) => {
     setSelectedLobbyId(bootcamperId);
     setShowLobbyModal(true);
   };
 
-  // Window-level handlers to support dragging bootcampers over iframes where dragover/drop
-  // may not reliably reach the grid element. Uses the global fallback __bootcamperDragId.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -641,14 +598,11 @@ export default function Home() {
       try {
         const gid = (window as unknown as { __bootcamperDragId?: string | null }).__bootcamperDragId;
         if (!gid) return;
-        // update external drag active and drop index based on pointer
         setExternalDragActive(true);
         const clientX = ev.clientX;
         const clientY = ev.clientY;
-        // use ref to avoid calling a function declared later
         const fn = computeDropRef.current;
         if (fn) setDropIndex(fn(clientX));
-        // show a floating preview for external drags (follow cursor)
         try {
           const candidate = liveStreamersRef.current.find(s => s.id === gid) || null;
           setPreviewStreamer(candidate);
@@ -663,17 +617,14 @@ export default function Home() {
         const gid = (window as unknown as { __bootcamperDragId?: string | null }).__bootcamperDragId;
         const transferred = ev.dataTransfer && ev.dataTransfer.getData && ev.dataTransfer.getData('text/bootcamper');
         if (!gid) return;
-        // If dataTransfer provided the id, grid onDrop will handle it; only handle fallback cases
         if (transferred) return;
         ev.preventDefault();
-        // Insert at computed index
         const fn = computeDropRef.current;
         const idx = fn ? fn(ev.clientX) : 0;
         const addFn = addExternalRef.current;
         if (addFn) addFn(gid, idx);
         try { (window as unknown as { __bootcamperDragId?: string | null }).__bootcamperDragId = null; } catch {}
         setExternalDragActive(false);
-        // clear preview
         setPreviewStreamer(null);
         setPreviewPos(null);
       } catch {}
@@ -688,7 +639,6 @@ export default function Home() {
     };
 
     const onDragLeaveWindow = (ev: DragEvent) => {
-      // clear external drag when leaving the window
       if (ev.clientX <= 0 || ev.clientY <= 0 || ev.clientX >= window.innerWidth || ev.clientY >= window.innerHeight) {
         setExternalDragActive(false);
         setDropIndex(null);
@@ -723,9 +673,6 @@ export default function Home() {
 
   // Generate Twitch embed URLs
   const getTwitchEmbedUrl = (twitchLogin: string) => {
-    // For local development prefer parent=localhost (no port) to avoid Twitch
-    // rejecting the colon in host:port combinations. For production we include
-    // the configured NEXT_PUBLIC_APP_URL host (and port if non-standard).
     const parentDomains: string[] = [];
 
     if (typeof window !== 'undefined') {
@@ -777,7 +724,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-black">
       <div className="mx-auto max-w-[85vw] px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Header */}
         <div className="flex items-center justify-between animate-fade-in">
           <div className="text-center flex-1 space-y-4">
             <h1 className="text-5xl font-bold bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">
@@ -794,7 +740,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
           <div className="card-modern p-6 text-center group">
             <div className="text-3xl font-bold text-white mb-2">
@@ -821,9 +766,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Multistream Embed */}
           <div className="lg:col-span-2 card-modern p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-white">Live Streams</h2>
@@ -851,7 +794,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Stream Selector - Show if more than 4 streams */}
             {displayStreamers.length > 4 && (
               <div className="mb-4 p-3 bg-gray-900/50 rounded-lg border border-gray-800">
                 <p className="text-xs text-gray-400 mb-2">
@@ -882,16 +824,13 @@ export default function Home() {
 
             {displayStreamers.length > 0 ? (
               <>
-                {/* Dynamic layouts based on stream count */}
                 <div
                   ref={streamGridRef}
                   onDragEnter={(e) => {
-                    // if an external Bootcamper drag is entering, mark externalDragActive
                     try {
                       const types = e.dataTransfer?.types;
                       if (types && Array.from(types).includes('text/bootcamper')) setExternalDragActive(true);
                       else {
-                        // fallback: some browsers/iframes may prevent types; use global set by BootcamperCard drag start
                         const globalId = (window as unknown as { __bootcamperDragId?: string | null }).__bootcamperDragId;
                         if (globalId) setExternalDragActive(true);
                       }
@@ -902,10 +841,8 @@ export default function Home() {
                   onDrop={(e) => {
                     e.preventDefault();
                     setExternalDragActive(false);
-                    // If dataTransfer didn't carry the bootcamper id (iframe issues), fall back to global
                     const bootcamperId = e.dataTransfer?.getData('text/bootcamper') || (window as unknown as { __bootcamperDragId?: string | null }).__bootcamperDragId || null;
                     if (bootcamperId) {
-                      // Use direct insertion helper to add the external bootcamper at the computed index
                       addExternalBootcamperAt(bootcamperId, computeDropIndexFromX(e.clientX));
                     } else {
                       handleDrop(e, computeDropIndexFromX(e.clientX));
@@ -917,7 +854,6 @@ export default function Home() {
                   streamsToShow.length === 3 ? 'grid-cols-2' : // 2 on top, 1 on bottom
                   'grid-cols-2' // 4 streams in 2x2
                 }`}>
-                  {/* internal overlay to reliably capture pointer events over iframes */}
                   {(isDragging || externalDragActive) && (
                     <div
                       className="absolute inset-0 z-40"
@@ -948,12 +884,10 @@ export default function Home() {
                   {(() => {
                     const base = streamsToShow.slice();
                     let visual = base.slice();
-                    // if dragging, remove draggedId from visual and insert a placeholder at dropIndex
                     const PLACEHOLDER_ID = '__PLACEHOLDER__';
                     type VisualItem = Bootcamper | { id: string };
                     let visualItems: VisualItem[] = base.slice();
                     if ((isDragging && draggedId) || externalDragActive) {
-                      // when dragging a selected stream internally, remove it from the visual list
                       visualItems = base.filter(s => !(isDragging && draggedId && s.id === draggedId));
                       const insertAt = Math.min(Math.max(0, dropIndex ?? visualItems.length), visualItems.length);
                       const placeholder: VisualItem = { id: PLACEHOLDER_ID };
@@ -1036,10 +970,7 @@ export default function Home() {
                     );
                   })()}
                 </div>
-                {/* allow dropping at end (after last tile) - only render if visual mapping didn't already include a placeholder */}
-                {/* only render explicit end placeholder when there are existing streams; empty-grid uses visual placeholder */}
                 {(isDragging || externalDragActive) && streamsToShow.length > 0 && dropIndex === streamsToShow.length && renderPlaceholder(streamsToShow.length)}
-                {/* Pointer capture overlay: appears during drag to reliably receive pointermove/up events even over iframes */}
                   {isDragging && (
                   <div
                     className="absolute inset-0 z-50"
@@ -1048,7 +979,6 @@ export default function Home() {
                       const clientX = pe.clientX;
                       const clientY = pe.clientY;
                       setDropIndex(computeDropIndexFromX(clientX));
-                      // tighter preview offset
                       setPreviewPos({ x: clientX + 6, y: clientY + 6 });
                     }}
                     onPointerUp={(e) => {
@@ -1059,7 +989,6 @@ export default function Home() {
                     style={{ touchAction: 'none' }}
                   />
                 )}
-                {/* Floating preview follows pointer while dragging */}
                 {isDragging && previewStreamer && previewPos && (
                   previewPortalElRef.current ? createPortal(
                     <div className="fixed z-[12000] pointer-events-none" style={{ left: previewPos.x, top: previewPos.y, width: 300, maxWidth: '40vw', transform: 'translate(-4px,-4px)', transition: 'transform 120ms linear' }}>
@@ -1138,7 +1067,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* Live Games */}
           <div className="card-modern p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold text-white">Live Games</h2>
@@ -1156,7 +1084,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Lobby Modal */}
         <Modal
           isOpen={showLobbyModal}
           onClose={() => {
@@ -1170,7 +1097,6 @@ export default function Home() {
             <div className="space-y-4">
               {
                 (() => {
-                  // Find the bootcamper that was selected, then pass the full group sharing the same riotGameId
                   const selected = inGameBootcampers.find(b => b.id === selectedLobbyId);
                   const group = selected && selected.games?.[0]?.riotGameId
                     ? inGameBootcampers.filter(b => b.games?.[0]?.riotGameId === selected.games?.[0]?.riotGameId)
@@ -1189,7 +1115,6 @@ export default function Home() {
           )}
         </Modal>
 
-        {/* All Bootcampers */}
         <div className="card-modern p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-white">All Bootcampers</h2>
@@ -1271,9 +1196,7 @@ function BootcamperCard({ bootcamper, onAdd, isSelected, canAdd }: { bootcamper:
       e.dataTransfer?.setData('text/bootcamper', bootcamper.id);
       e.dataTransfer!.effectAllowed = 'copy';
       try { (window as unknown as { __bootcamperDragId?: string | null }).__bootcamperDragId = bootcamper.id; } catch {}
-    } catch {
-      // ignore
-    }
+    } catch {}
   };
 
   const handleDragEndLocal = () => {
@@ -1347,9 +1270,8 @@ function BootcamperCard({ bootcamper, onAdd, isSelected, canAdd }: { bootcamper:
           {bootcamper.twitchLogin}
         </a>
       )}
-      {/* Add / Remove control for quick add to dashboard */}
       <div className="mt-3 flex items-center gap-2">
-  {onAdd && (isStreaming || isSelected) && (
+        {onAdd && (isStreaming || isSelected) && (
           <button
             type="button"
             onClick={() => onAdd(bootcamper.id)}

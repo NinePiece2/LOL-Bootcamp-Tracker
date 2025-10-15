@@ -3,51 +3,6 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import sharp from 'sharp';
 
-// // Use a lightweight local type for bootcamper with games to avoid Prisma helper type issues
-// type BootcamperWithGames = {
-//   id: string;
-//   riotId: string | null;
-//   summonerName: string;
-//   name: string | null;
-//   summonerId: string | null;
-//   puuid: string | null;
-//   region: string;
-//   twitchLogin: string | null;
-//   twitchUserId: string | null;
-//   twitchProfileImage: Uint8Array | null;
-//   role: string | null;
-//   startDate: string | Date;
-//   plannedEndDate: string | Date | null;
-//   actualEndDate: string | Date | null;
-//   status: string;
-//   peakSoloTier: string | null;
-//   peakSoloRank: string | null;
-//   peakSoloLP: number | null;
-//   peakFlexTier: string | null;
-//   peakFlexRank: string | null;
-//   peakFlexLP: number | null;
-//   peakUpdatedAt: Date | null;
-//   currentSoloTier: string | null;
-//   currentSoloRank: string | null;
-//   currentSoloLP: number | null;
-//   currentSoloWins: number | null;
-//   currentSoloLosses: number | null;
-//   currentFlexTier: string | null;
-//   currentFlexRank: string | null;
-//   currentFlexLP: number | null;
-//   currentFlexWins: number | null;
-//   currentFlexLosses: number | null;
-//   rankUpdatedAt: Date | null;
-//   games: Array<{
-//     id: string;
-//     riotGameId: string;
-//     bootcamperId: string;
-//     startedAt: string | Date;
-//     endedAt: string | Date | null;
-//     status: string;
-//   }>;
-// };
-
 // Cache for compressed images
 const imageCache = new Map<string, string>();
 
@@ -114,7 +69,6 @@ export async function GET(request: NextRequest) {
       where.isDefault = true;
     }
 
-    // Optimize: Only select needed fields, exclude large images initially
     // If the user requested their personal list, prefer the association table
     if (session?.user && listType === 'user') {
       // Fetch associations and include canonical bootcamper data (including rank fields and images)
@@ -201,7 +155,6 @@ export async function GET(request: NextRequest) {
       const ranksDataPromises = associations.map(async (assoc) => {
         const b = assoc.bootcamper as CanonicalBoot;
 
-        // gamesPlayed: prefer count from canonical bootcamper
         const gamesPlayed = b._count?.games || 0;
 
         // peak rank
@@ -338,7 +291,6 @@ export async function GET(request: NextRequest) {
 
     // Process images in parallel for better performance and get game counts for user references
     const ranksDataPromises = bootcampers.map(async (bootcamper) => {
-      // For user references, get game count from linked default bootcamper
       let gamesPlayed = bootcamper._count.games;
       if (bootcamper.linkedToDefaultId && gamesPlayed === 0) {
         const defaultBootcamper = await prisma.bootcamper.findUnique({
@@ -363,9 +315,9 @@ export async function GET(request: NextRequest) {
           tier: bootcamper.peakSoloTier,
           rank: bootcamper.peakSoloRank,
           leaguePoints: bootcamper.peakSoloLP,
-          wins: 0, // Not tracked historically
-          losses: 0, // Not tracked historically
-          winRate: 0, // Not tracked historically
+          wins: 0,
+          losses: 0,
+          winRate: 0,
         };
       } else if (bootcamper.peakFlexTier && bootcamper.peakFlexRank !== null && bootcamper.peakFlexLP !== null) {
         // Fall back to flex peak if no solo peak

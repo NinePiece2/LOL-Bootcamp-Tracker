@@ -45,8 +45,7 @@ export interface CurrentGameParticipant {
   spell2Id: number;
   championId: number;
   profileIconId: number;
-  // v5 API changed these fields
-  riotId?: string; // New in v5 - full Riot ID
+  riotId?: string;
   summonerName?: string; // Deprecated but may still exist
   riotIdGameName?: string; // Not in spectator v5
   riotIdTagline?: string; // Not in spectator v5  

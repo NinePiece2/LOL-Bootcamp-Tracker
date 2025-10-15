@@ -130,9 +130,7 @@ export default function LeaderboardPage() {
           try {
             if (prev.prevStyle) prev.el.setAttribute('style', prev.prevStyle);
             else prev.el.removeAttribute('style');
-          } catch {
-            // ignore
-          }
+          } catch {}
         }
         prevHighlightRef.current = null;
       }
@@ -185,14 +183,12 @@ export default function LeaderboardPage() {
   
   // Set initial list based on localStorage or user permissions
   const getInitialList = (): 'default' | 'user' => {
-    // Try to get from localStorage first (client-side only)
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('bootcamp-list-preference');
       if (stored === 'default' || stored === 'user') {
         return stored;
       }
     }
-    // Fall back to user permissions
     if (!session?.user) return 'default';
     return session.user.isAdmin ? 'default' : 'user';
   };
@@ -244,7 +240,7 @@ export default function LeaderboardPage() {
         const response = await fetch(`/api/bootcampers/ranks?listType=${listType}`);
         const data = await response.json();
         
-        // Sort by rank (Challenger > GM > Master, etc) and LP
+        // Sort by rank
         const rankOrder: Record<string, number> = {
           'CHALLENGER': 8,
           'GRANDMASTER': 7,
@@ -304,7 +300,7 @@ export default function LeaderboardPage() {
     };
 
     fetchLeaderboard();
-    const interval = setInterval(fetchLeaderboard, 300000); // Refresh every 5 minutes
+    const interval = setInterval(fetchLeaderboard, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, [currentList, session?.user]);
 
@@ -487,7 +483,6 @@ export default function LeaderboardPage() {
     
     return (
       <div className="flex items-center gap-3 justify-start">
-        {/* Twitch Profile Picture */}
         {twitchUrl && props.twitchProfileImage ? (
           <div className="relative flex-shrink-0">
             <a 
@@ -580,7 +575,6 @@ export default function LeaderboardPage() {
     const tierDisplay = rank.tier.charAt(0) + rank.tier.slice(1).toLowerCase();
     const queueType = props.soloQueue ? 'Solo/Duo' : 'Flex';
     
-    // Local rank emblem URLs
     const getRankEmblemUrl = (tier: string) => {
       const tierLower = tier.toLowerCase();
       return `/rank-images/${tierLower}.png`;
@@ -667,7 +661,6 @@ export default function LeaderboardPage() {
     const winPercentage = (rank.wins / totalGames) * 100;
     const lossPercentage = (rank.losses / totalGames) * 100;
     
-    // Professional color gradients based on win rate tiers
     const getWinRateColors = () => {
       if (winRate >= 60) {
         return {
@@ -700,7 +693,6 @@ export default function LeaderboardPage() {
     
     return (
       <div className={`flex items-center gap-4 w-full px-3 py-2 rounded-lg ${colors.bgGlow} transition-all duration-300 hover:scale-[1.02]`}>
-        {/* Win rate percentage with enhanced styling */}
         <div className="flex flex-col items-center gap-0.5 min-w-[60px]">
           <span className={`text-xl font-bold ${colors.text} tabular-nums tracking-tight leading-none`}>
             {winRate.toFixed(1)}%
@@ -708,23 +700,15 @@ export default function LeaderboardPage() {
           <span className="text-[9px] text-gray-500 font-medium uppercase tracking-wide">{totalGames} Games</span>
         </div>
         
-        {/* Professional progress bar */}
         <div className="flex-1 max-w-[190px] space-y-1.5">
-          {/* Bar container with improved depth */}
           <div className={`relative h-7 bg-gradient-to-br from-gray-900/80 via-gray-800/60 to-gray-900/80 rounded-lg overflow-hidden border border-gray-700/50 ${colors.glow} ${colors.ring}`}>
-            {/* Loss background with subtle gradient */}
             <div className="absolute inset-0 bg-gradient-to-r from-red-600/45 via-red-600/35 to-red-600/25"></div>
-            
-            {/* Win section with polished gradient */}
             <div 
               className={`relative h-full bg-gradient-to-r ${colors.gradient} transition-all duration-700 ease-out`}
               style={{ width: `${winPercentage}%` }}
             >
-              {/* Multi-layer shine effect */}
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent animate-shimmer"></div>
               <div className="absolute inset-0 bg-gradient-to-b from-white/15 via-transparent to-black/10"></div>
-              
-              {/* Win count with better readability */}
               {winPercentage > 20 && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="text-xs font-black text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] tracking-tight">
@@ -733,8 +717,6 @@ export default function LeaderboardPage() {
                 </div>
               )}
             </div>
-            
-            {/* Loss count with improved positioning */}
             {lossPercentage > 20 && (
               <div 
                 className="absolute inset-0 flex items-center justify-center"
@@ -747,7 +729,6 @@ export default function LeaderboardPage() {
             )}
           </div>
           
-          {/* W/L Record with improved visual hierarchy */}
           <div className="flex items-center justify-center gap-2.5 text-[10px] font-bold">
             <div className="flex items-center gap-1">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]"></div>
@@ -779,12 +760,8 @@ export default function LeaderboardPage() {
         const response = await fetch(`/api/bootcampers?listType=${listType}`);
         const allBootcampers: BootcamperWithGames[] = await response.json();
         
-        // Find the specific bootcamper. The ranks API may return association ids for user lists,
-        // while the bootcampers GET returns canonical bootcamper ids and sets `userAssociationId`.
-        // Try both matches so the modal works regardless of which id shape the leaderboard used.
         let bootcamper = allBootcampers.find(b => b.id === props.id);
         if (!bootcamper) {
-          // Lightweight type guard for objects that might have userAssociationId
           const hasUserAssoc = (x: unknown): x is { userAssociationId?: string | null } => {
             return typeof x === 'object' && x !== null && 'userAssociationId' in (x as Record<string, unknown>);
           };
@@ -793,8 +770,6 @@ export default function LeaderboardPage() {
         }
         
         if (bootcamper) {
-          // Build a lobby group of all bootcampers sharing the same riotGameId so the modal
-          // shows the full match rather than a single player.
           const gameId = bootcamper.games?.[0]?.riotGameId;
           const group = gameId ? allBootcampers.filter(b => b.games?.[0]?.riotGameId === gameId) : [bootcamper];
           setSelectedLobbyGroup(group);
@@ -886,7 +861,6 @@ export default function LeaderboardPage() {
   return (
     <div className="min-h-screen bg-black">
       <div className="mx-auto max-w-[75vw] px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Header */}
         <div className="flex items-center justify-between animate-fade-in">
           <div className="text-center flex-1 space-y-4">
             <h1 className="text-5xl font-bold bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">
@@ -903,8 +877,7 @@ export default function LeaderboardPage() {
           )}
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
+=        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
           <div
             role="button"
             tabIndex={0}
@@ -962,7 +935,6 @@ export default function LeaderboardPage() {
           </div>
         </div>
 
-        {/* Leaderboard Grid */}
         <div className="card-modern p-0 overflow-hidden">
           <GridComponent
             ref={gridRef}
@@ -1029,7 +1001,6 @@ export default function LeaderboardPage() {
         </GridComponent>
         </div>
 
-        {/* Game Lobby Modal */}
         <Modal
           isOpen={showLobbyModal}
           onClose={() => {

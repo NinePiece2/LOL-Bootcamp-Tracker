@@ -23,7 +23,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: 'jwt' },
   pages: {
-    signIn: '/', // We'll handle sign-in via dialog on home page
+    signIn: '/',
   },
   trustHost: true, // Required for NextAuth v5 when using custom domains
   debug: process.env.NODE_ENV === 'development', // Enable debug logs in dev

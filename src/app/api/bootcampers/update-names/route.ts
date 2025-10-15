@@ -72,7 +72,6 @@ export async function POST() {
         }
       } catch (error) {
         console.error(`Error updating summoner name for ${bootcamper.summonerName}:`, error);
-        // Continue with next bootcamper
       }
     }
 

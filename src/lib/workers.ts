@@ -27,7 +27,6 @@ interface SpectatorJobData {
 interface MatchDataJobData {
   bootcamperId: string;
   gameId: string;
-  // REMOVED: region - will be fetched fresh from DB
 }
 
 interface SummonerNameJobData {

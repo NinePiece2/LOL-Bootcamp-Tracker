@@ -203,8 +203,8 @@ npm run workers
 ## 📝 Notes
 
 ### Limitations
-- **Real-time updates:** Dashboard uses polling (30s interval) instead of WebSockets
-- **Twitch webhooks:** Require public HTTPS URL (use ngrok for local testing)
+- **Real-time updates:** Dashboard uses polling (60s interval) instead of WebSockets
+- **Twitch webhooks:** Require public HTTPS URL
 - **Riot API rate limits:** Development keys have strict limits, production keys recommended
 - **Syncfusion license:** Free community license required for production use
 
@@ -262,5 +262,3 @@ npm run workers
 - clsx@2.1.1
 
 ---
-
-**Built with ❤️ for tracking League bootcampers**

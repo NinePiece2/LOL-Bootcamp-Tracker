@@ -452,8 +452,6 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json(userBootcampers);
         } catch (err: unknown) {
-          // If the association table doesn't exist yet (migration not applied), fall back
-          // to the original behavior: query bootcampers where userId = session.user.id
           const maybeErr = err as { code?: string; message?: unknown } | undefined;
           if (maybeErr?.code === 'P2021' || (maybeErr?.message && String(maybeErr.message).includes('user_bootcampers'))) {
             console.warn('user_bootcampers table not found, falling back to legacy user bootcamper query');
@@ -588,11 +586,8 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    // For user references, fetch games and streams from their linked default bootcampers
     const enrichedBootcampers = await Promise.all(
       bootcampers.map(async (bootcamper) => {
-        // If this bootcamper points to a canonical/default bootcamper, ALWAYS source the latest live/game/stream
-        // data from the canonical record so user lists mirror default list behavior.
         if (bootcamper.linkedToDefaultId) {
           try {
             const defaultBoot = await prisma.bootcamper.findUnique({
@@ -621,13 +616,10 @@ export async function GET(request: NextRequest) {
 
             return {
               ...bootcamper,
-              // override with canonical's live/game/stream data so UI (LiveGamesSection, dashboard)
-              // renders identical data for default and user views
               games: defaultBoot?.games || [],
               twitchStreams: defaultBoot?.twitchStreams || [],
               status: defaultBoot?.status ?? bootcamper.status,
               lastGameId: defaultBoot?.lastGameId ?? bootcamper.lastGameId,
-              // keep original name override, but ensure summoner/puuid/riotId are available
               summonerName: bootcamper.summonerName || (defaultBoot?.summonerName ?? bootcamper.summonerName),
               riotId: bootcamper.riotId || (defaultBoot?.riotId ?? bootcamper.riotId),
               puuid: bootcamper.puuid || (defaultBoot?.puuid ?? bootcamper.puuid),

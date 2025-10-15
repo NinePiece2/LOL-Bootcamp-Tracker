@@ -5,7 +5,7 @@
 The LoL KR Bootcamp Tracker uses **background workers** to:
 - Poll Riot's Spectator API for live games
 - Fetch rank data for all players in games
-- Update match data every 30 seconds
+- Update match data every 60 seconds
 
 **The workers DO NOT start with `npm run dev`** - you must run them in a separate terminal!
 
@@ -27,7 +27,7 @@ When running, you'll see logs like:
 ```
 🚀 Starting League Bootcamp Tracker Workers...
 ✅ Workers started successfully
-📊 Polling for live games every 30 seconds
+📊 Polling for live games every 60 seconds
 Press Ctrl+C to stop
 
 🎮 Game started for Jankos (ID: 7849820160)
@@ -60,10 +60,3 @@ DATABASE_URL="postgresql://..."
 REDIS_URL="redis://localhost:6379"
 RIOT_API_KEY="RGAPI-..."
 ```
-
-## Production Deployment
-
-For production, you should run workers as a separate process/container:
-- Use process managers like PM2, systemd, or Docker
-- Ensure both the Next.js app AND workers are running
-- Workers need access to the same database and Redis instance
