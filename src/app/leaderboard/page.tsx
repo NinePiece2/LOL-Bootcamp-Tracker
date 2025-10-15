@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
-import { GridComponent, ColumnsDirective, ColumnDirective, Page, Filter, Sort, Toolbar, Inject } from '@syncfusion/ej2-react-grids';
+import { GridComponent, ColumnsDirective, ColumnDirective, Filter, Sort, Toolbar, Inject } from '@syncfusion/ej2-react-grids';
 import { Badge } from '@/components/ui/badge';
 import { Trophy, TrendingUp, Target } from 'lucide-react';
 import { ListSwitcher } from '@/components/list-switcher';
@@ -942,15 +942,15 @@ export default function LeaderboardPage() {
           </div>
         </div>
 
-        <div className="card-modern p-0 overflow-hidden">
+        <div className="card-modern p-0 overflow-hidden ">
           <GridComponent
             ref={gridRef}
             dataSource={bootcampers}
-            allowPaging={true}
+            allowPaging={false}
             allowSorting={true}
-            pageSettings={{ pageSize: 10 }}
+            // pageSettings={{ pageSize: 10 }}
             toolbar={['Search']}
-            height={875}
+            height={'auto'}
             enableHover={true}
           >
           <ColumnsDirective>
@@ -1004,7 +1004,7 @@ export default function LeaderboardPage() {
               allowSorting={false}
             />
           </ColumnsDirective>
-          <Inject services={[Page, Filter, Sort, Toolbar]} />
+          <Inject services={[Filter, Sort, Toolbar]} />
         </GridComponent>
         </div>
 

@@ -576,8 +576,9 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                     <div className="flex items-center gap-2">
                           <span className={`h-3 w-3 rounded-full ${teamId === 100 ? 'bg-blue-400' : 'bg-red-400'}`} />
                           <span className="text-sm font-semibold text-gray-300">{teamId === 100 ? 'Blue Team' : 'Red Team'}</span>
-                          {/* Render banned champions for this team as small squares */}
-                          <div className="flex items-center gap-1 ml-2">
+                          {/* Render banned champions for this team as small squares with a label */}
+                          <div className="flex items-center gap-1 ml-3">
+                            <span className="text-xs text-gray-400 mr-1">Bans</span>
                             {(focusedGame.matchData?.bannedChampions || []).filter((b: BannedChampion) => b.teamId === teamId).map((ban: BannedChampion) => {
                               const raw = championNameCache[ban.championId] || null;
                               const nice = prettifyChampionName(raw) || '';
@@ -838,9 +839,10 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
                       
                       return (
                         <div key={teamId}>
-                          <div className="text-xs font-semibold mb-2 text-gray-400 flex items-center gap-2">
+                            <div className="text-xs font-semibold mb-2 text-gray-400 flex items-center gap-2">
                             <span>{teamId === 100 ? '🔵 Blue Team' : '🔴 Red Team'}</span>
                             <div className="flex items-center gap-1">
+                              <span className="text-[11px] text-gray-400 mr-1">Bans</span>
                               {(game?.matchData?.bannedChampions || []).filter((b: BannedChampion) => b.teamId === teamId).map((ban: BannedChampion) => {
                                 const raw = championNameCache[ban.championId] || null;
                                 const nice = prettifyChampionName(raw) || '';
