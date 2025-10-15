@@ -1,4 +1,4 @@
-// Script to check for ninepiece2 admin user and make admin if exists
+// Script to check for admin userw and make them admin if exists
 // This runs automatically during container initialization
 
 import { PrismaClient } from '@prisma/client';
@@ -7,25 +7,26 @@ const prisma = new PrismaClient();
 
 async function checkAndMakeAdmin() {
   try {
-    console.log('🔧 Checking for ninepiece2 user...');
-    
-    // Check if ninepiece2 user exists
+    console.log('🔧 Checking for admin user...');
+    const adminUsername = process.env.ADMIN_USERNAME;
+
+    // Check if admin user exists
     const existingUser = await prisma.user.findFirst({
       where: {
         username: {
-          equals: 'ninepiece2',
+          equals: adminUsername,
           mode: 'insensitive'
         }
       },
     });
 
     if (!existingUser) {
-      console.log(`ℹ️  User ninepiece2 not found - skipping admin setup`);
+      console.log(`ℹ️  User ${adminUsername} not found - skipping admin setup`);
       return;
     }
 
     if (existingUser.isAdmin) {
-      console.log(`✅ User ninepiece2 already has admin privileges`);
+      console.log(`✅ User ${adminUsername} already has admin privileges`);
       return;
     }
 
@@ -34,9 +35,9 @@ async function checkAndMakeAdmin() {
       where: { id: existingUser.id },
       data: { isAdmin: true },
     });
-    
-    console.log(`✅ Successfully granted admin privileges to ninepiece2`);
-    
+
+    console.log(`✅ Successfully granted admin privileges to ${adminUsername}`);
+
   } catch (error) {
     console.error('❌ Error checking/updating admin status:', error);
     // Don't exit with error - this shouldn't fail the migration
