@@ -189,19 +189,35 @@ export default function LeaderboardPage() {
   };
 
   const currentRankValueAccessor = (field: string, data: unknown): string => {
-    const r = (data as LeaderboardEntry).soloQueue || (data as LeaderboardEntry).flexQueue;
-    if (!r) return '';
-    const tierDisplay = r.tier.charAt(0) + r.tier.slice(1).toLowerCase();
-    const division = r.rank ? ` ${r.rank}` : '';
-    return `${tierDisplay}${division} ${r.leaguePoints} LP`.trim();
+    try {
+      if (!data || typeof data !== 'object') return '';
+      const entry = data as LeaderboardEntry;
+      const asAny = entry as unknown as Record<string, unknown>;
+      if (typeof asAny.currentRankString === 'string') return asAny.currentRankString as string;
+      const r = entry.soloQueue || entry.flexQueue;
+      if (!r || !r.tier) return '';
+      const tierDisplay = r.tier.charAt(0) + r.tier.slice(1).toLowerCase();
+      const division = r.rank ? ` ${r.rank}` : '';
+      return `${tierDisplay}${division} ${r.leaguePoints} LP`.trim();
+    } catch {
+      return '';
+    }
   };
 
   const peakRankValueAccessor = (field: string, data: unknown): string => {
-    const r = (data as LeaderboardEntry).peakRank;
-    if (!r) return '';
-    const tierDisplay = r.tier.charAt(0) + r.tier.slice(1).toLowerCase();
-    const division = r.rank ? ` ${r.rank}` : '';
-    return `${tierDisplay}${division} ${r.leaguePoints} LP`.trim();
+    try {
+      if (!data || typeof data !== 'object') return '';
+      const entry = data as LeaderboardEntry;
+      const asAny = entry as unknown as Record<string, unknown>;
+      if (typeof asAny.peakRankString === 'string') return asAny.peakRankString as string;
+      const r = entry.peakRank;
+      if (!r || !r.tier) return '';
+      const tierDisplay = r.tier.charAt(0) + r.tier.slice(1).toLowerCase();
+      const division = r.rank ? ` ${r.rank}` : '';
+      return `${tierDisplay}${division} ${r.leaguePoints} LP`.trim();
+    } catch {
+      return '';
+    }
   };
   
   // Set initial list based on localStorage or user permissions
@@ -314,7 +330,39 @@ export default function LeaderboardPage() {
           return bRank.leaguePoints - aRank.leaguePoints;
         });
 
-        setBootcampers(data);
+        // Compute numeric score and readable string for current and peak ranks
+        const computeRankScore = (r?: RankData | null) => {
+          if (!r || !r.tier) return { score: 0, display: '' };
+          const tierIdx = rankOrder[r.tier] ?? 0;
+          const divisionIdx = r.rank ? (divisionOrder[r.rank] || 0) : 0;
+          const score = tierIdx * 1_000_000 + divisionIdx * 10_000 + (r.leaguePoints || 0);
+          const tierDisplay = r.tier.charAt(0) + r.tier.slice(1).toLowerCase();
+          const division = r.rank ? ` ${r.rank}` : '';
+          const display = `${tierDisplay}${division} ${r.leaguePoints} LP`.trim();
+          return { score, display };
+        };
+
+        const enriched = (data as LeaderboardEntry[]).map((entry) => {
+          const current = entry.soloQueue || entry.flexQueue || null;
+          const peak = entry.peakRank || null;
+          const currentInfo = computeRankScore(current);
+          const peakInfo = computeRankScore(peak);
+
+          return {
+            ...entry,
+            currentRankSort: currentInfo.score,
+            currentRankString: currentInfo.display,
+            peakRankSort: peakInfo.score,
+            peakRankString: peakInfo.display,
+          } as LeaderboardEntry & {
+            currentRankSort: number;
+            currentRankString: string;
+            peakRankSort: number;
+            peakRankString: string;
+          };
+        });
+
+        setBootcampers(enriched);
       } catch (error) {
         console.error('Error fetching leaderboard:', error);
       } finally {
@@ -985,7 +1033,7 @@ export default function LeaderboardPage() {
               template={summonerTemplate}
             />
             <ColumnDirective
-              field="soloQueue"
+              field="currentRankSort"
               headerText="Current Rank"
               width="250"
               textAlign="Center"
@@ -993,7 +1041,7 @@ export default function LeaderboardPage() {
               valueAccessor={currentRankValueAccessor}
             />
             <ColumnDirective
-              field="peakRank"
+              field="peakRankSort"
               headerText="Peak Rank"
               width="140"
               textAlign="Center"
