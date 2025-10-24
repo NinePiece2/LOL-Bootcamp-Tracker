@@ -129,15 +129,29 @@ async function checkSpectator(data: SpectatorJobData) {
           activeGame.participants.map(async (participant) => {
             try {
               const playerName = participant.summonerName || participant.riotIdGameName || 'Unknown';
-              console.log(`Fetching rank for ${playerName} (puuid: ${participant.puuid?.substring(0, 8)}...)...`);
-              
+
+              // If the participant is in streamer/anonymous mode (no puuid), skip rank lookup
+              // to avoid consuming Riot API rate limits / tokens.
+              if (!participant.puuid) {
+                console.log(`🔒 Skipping rank fetch for streamer-mode participant ${playerName} (anonymous puuid)`);
+                return {
+                  ...participant,
+                  rank: 'Unranked',
+                  tier: null,
+                  division: null,
+                  leaguePoints: 0,
+                };
+              }
+
+              console.log(`Fetching rank for ${playerName} (puuid: ${participant.puuid.substring(0, 8)}...)...`);
+
               // Fetch rank data for each participant by their puuid (v5 API)
               const rankData = await riotClient.getLeagueEntries(region, participant.puuid);
               console.log(`Rank data received for ${playerName}:`, rankData);
-              
+
               // Find solo queue rank
               const soloQueueRank = rankData.find((entry: { queueType: string }) => entry.queueType === 'RANKED_SOLO_5x5');
-              
+
               const enriched = {
                 ...participant,
                 rank: soloQueueRank ? `${soloQueueRank.tier} ${soloQueueRank.rank}` : 'Unranked',
@@ -145,7 +159,7 @@ async function checkSpectator(data: SpectatorJobData) {
                 division: soloQueueRank?.rank || null,
                 leaguePoints: soloQueueRank?.leaguePoints || 0,
               };
-              
+
               console.log(`✅ Enriched participant ${playerName}:`, {
                 rank: enriched.rank,
                 tier: enriched.tier,
@@ -153,13 +167,13 @@ async function checkSpectator(data: SpectatorJobData) {
                 LP: enriched.leaguePoints,
                 hadData: !!soloQueueRank,
               });
-              
+
               return enriched;
             } catch (error) {
               const playerName = participant.summonerName || participant.riotIdGameName || 'Unknown';
               console.error(`❌ Failed to fetch rank for ${playerName}:`, {
                 error: error instanceof Error ? error.message : String(error),
-                puuid: participant.puuid?.substring(0, 8) + '...',
+                puuid: participant.puuid ? participant.puuid.substring(0, 8) + '...' : 'anonymous',
               });
               return {
                 ...participant,
@@ -181,10 +195,13 @@ async function checkSpectator(data: SpectatorJobData) {
         // Identify roles for all participants
         console.log(`🎯 Identifying roles for ${enrichedParticipants.length} participants...`);
         const roleAssignments = await identifyRoles(enrichedParticipants);
-        
-        // Add inferred roles to participants
-        const participantsWithRoles = enrichedParticipants.map(p => {
-          const role = roleAssignments.get(p.puuid) || 'MIDDLE';
+
+        // Add inferred roles to participants — use roleKey fallback for streamer mode
+        const participantsWithRoles = enrichedParticipants.map((p, idx) => {
+          const key = (p.puuid && p.puuid !== 'null' && p.puuid !== '')
+            ? p.puuid
+            : (((p as unknown as { roleKey?: string }).roleKey) || `anon_${idx}`);
+          const role = roleAssignments.get(key) || 'MIDDLE';
           return {
             ...p,
             inferredRole: role,
