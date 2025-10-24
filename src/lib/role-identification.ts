@@ -43,16 +43,18 @@ interface Participant {
  * Returns a map of puuid -> position
  */
 export async function identifyRoles(participants: Participant[]): Promise<Map<string, Position>> {
+  // Use a stable key for each participant: puuid if present, else fallback to array index as string
+  const getKey = (p: Participant, idx: number) => p.puuid || `anon_${idx}`;
   const assignments = new Map<string, Position>();
 
   // Step 1: Identify junglers by Smite (100% accurate - ALWAYS PRIORITIZE THIS)
-  const junglers = participants.filter(p =>
-    SMITE_SPELL_IDS.includes(p.spell1Id) || SMITE_SPELL_IDS.includes(p.spell2Id)
-  );
+  const junglers: Array<{p: Participant, idx: number}> = participants
+    .map((p, idx) => ({ p, idx }))
+    .filter(({ p }) => SMITE_SPELL_IDS.includes(p.spell1Id) || SMITE_SPELL_IDS.includes(p.spell2Id));
 
-  for (const jungler of junglers) {
-    assignments.set(jungler.puuid, 'JUNGLE');
-    console.log(`✅ JUNGLE (Smite): ${jungler.championName || jungler.championId}`);
+  for (const { p, idx } of junglers) {
+    assignments.set(getKey(p, idx), 'JUNGLE');
+    console.log(`✅ JUNGLE (Smite): ${p.championName || p.championId}`);
   }
 
   // Get playrate data from database
@@ -62,9 +64,10 @@ export async function identifyRoles(participants: Participant[]): Promise<Map<st
   const teams = [100, 200];
 
   for (const teamId of teams) {
-    const teamPlayers = participants.filter(p =>
-      p.teamId === teamId && !assignments.has(p.puuid)
-    );
+    // Use index as fallback key for streamer mode participants
+    const teamPlayers = participants
+      .map((p, idx) => ({ p, idx }))
+      .filter(({ p, idx }) => p.teamId === teamId && !assignments.has(getKey(p, idx)));
 
     if (teamPlayers.length === 0) continue;
 
@@ -73,8 +76,9 @@ export async function identifyRoles(participants: Participant[]): Promise<Map<st
     // Calculate probabilities for each player-role combination
     const playerProbabilities: Array<{
       player: Participant;
+      idx: number;
       probabilities: { TOP: number; MIDDLE: number; BOTTOM: number; UTILITY: number };
-    }> = teamPlayers.map(player => {
+    }> = teamPlayers.map(({ p: player, idx }) => {
       const playrates = player.championId ? playrateMap.get(player.championId) : null;
 
       // Default to equal probability if no playrate data
@@ -104,7 +108,7 @@ export async function identifyRoles(participants: Participant[]): Promise<Map<st
         probabilities.UTILITY *= 1.3; // 1.3x bonus for Ignite (Support can use it too)
       }
 
-      return { player, probabilities };
+      return { player, idx, probabilities };
     });
 
     // Greedy assignment: Assign roles based on highest probability
@@ -134,9 +138,10 @@ export async function identifyRoles(participants: Participant[]): Promise<Map<st
       }
 
       if (bestRole && bestPlayerIdx !== -1) {
-        const { player } = playerProbabilities[bestPlayerIdx];
-        roleAssignments.set(player.puuid, bestRole);
-        assignments.set(player.puuid, bestRole);
+        const { player, idx } = playerProbabilities[bestPlayerIdx];
+        const key = getKey(player, idx);
+        roleAssignments.set(key, bestRole);
+        assignments.set(key, bestRole);
 
         console.log(
           `  ✓ ${bestRole}: ${player.championName || player.championId} (${maxProb.toFixed(2)}% playrate)`
@@ -150,7 +155,11 @@ export async function identifyRoles(participants: Participant[]): Promise<Map<st
 
     // Validation
     const teamAssignments = Array.from(assignments.entries())
-      .filter(([puuid]) => participants.find(p => p.puuid === puuid)?.teamId === teamId)
+      .filter(([key]) => {
+        // Find participant by puuid or fallback key
+        const idx = key.startsWith('anon_') ? parseInt(key.replace('anon_', '')) : participants.findIndex(p => p.puuid === key);
+        return idx !== -1 && participants[idx].teamId === teamId;
+      })
       .map(([, role]) => role);
 
     const uniqueRoles = new Set(teamAssignments);
