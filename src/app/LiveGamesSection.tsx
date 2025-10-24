@@ -39,6 +39,7 @@ interface Participant {
   leaguePoints?: number;
   inferredRole?: string;
   perks: Perks;
+  roleKey?: string;
 }
 
 interface GameData {
@@ -233,11 +234,13 @@ const LiveGamesSection: React.FC<LiveGamesSectionProps> = ({
 
             if (response.ok) {
               const { roles } = await response.json();
-              
-              participantsWithRoles = enrichedParticipants.map(p => ({
-                ...p,
-                inferredRole: roles[p.puuid] || 'MIDDLE',
-              }));
+              participantsWithRoles = enrichedParticipants.map((p, idx) => {
+                const roleKey = (p.puuid && p.puuid !== 'null' && p.puuid !== '') ? p.puuid : `anon_${idx}`;
+                return {
+                  ...p,
+                  inferredRole: roles[roleKey] || 'MIDDLE',
+                };
+              });
             } else {
               console.error('Failed to identify roles:', response.statusText);
               participantsWithRoles = enrichedParticipants.map(p => ({
