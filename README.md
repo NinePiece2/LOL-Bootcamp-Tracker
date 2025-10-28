@@ -52,7 +52,7 @@ Use the Docker Compose or Kubernetes configs given [here](#docker-compose-recomm
 
 ## Tech Stack
 
-- **Framework:** Next.js 15 (App Router)
+- **Framework:** Next.js 16 (App Router)
 - **Database:** PostgreSQL with Prisma ORM
 - **Job Queue:** BullMQ with Redis
 - **UI:** Tailwind CSS, shadcn/ui, Syncfusion
