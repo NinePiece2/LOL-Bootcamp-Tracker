@@ -175,9 +175,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch Twitch info if provided
-    let twitchUserId: string | undefined;
-    let twitchProfileImage: Buffer | undefined;
+  let twitchUserId: string | undefined;
+  let twitchProfileImage: Uint8Array<ArrayBuffer> | undefined;
     if (data.twitchLogin) {
       const twitchClient = getTwitchClient();
       const twitchUser = await twitchClient.getUserByLogin(data.twitchLogin);
@@ -190,7 +189,7 @@ export async function POST(request: NextRequest) {
             const imageResponse = await fetch(twitchUser.profile_image_url);
             if (imageResponse.ok) {
               const arrayBuffer = await imageResponse.arrayBuffer();
-              twitchProfileImage = Buffer.from(arrayBuffer);
+              twitchProfileImage = new Uint8Array(arrayBuffer as ArrayBuffer) as unknown as Uint8Array<ArrayBuffer>;
               console.log('✅ Downloaded Twitch profile image');
             }
           } catch (error) {
