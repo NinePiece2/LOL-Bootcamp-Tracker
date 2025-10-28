@@ -153,9 +153,11 @@ export async function PATCH(
       }
     }
 
-    // Handle Twitch account changes
-    let twitchUserId: string | undefined;
-    let twitchProfileImage: Buffer | undefined;
+  // Handle Twitch account changes
+  let twitchUserId: string | undefined;
+  // Prisma expects bytes as Uint8Array<ArrayBuffer> (or the NullableBytesFieldUpdateOperationsInput shape).
+  // Use the more specific generic so TypeScript narrows correctly and we can cast the fetched buffer.
+  let twitchProfileImage: Uint8Array<ArrayBuffer> | undefined;
     const twitchChanged = data.twitchLogin && data.twitchLogin !== existing.twitchLogin;
 
     if (twitchChanged) {
@@ -171,10 +173,9 @@ export async function PATCH(
 
       twitchUserId = users[0].id;
 
-      // Fetch profile image
-      const imageResponse = await fetch(users[0].profile_image_url);
-      const imageBuffer = await imageResponse.arrayBuffer();
-      twitchProfileImage = Buffer.from(imageBuffer);
+    const imageResponse = await fetch(users[0].profile_image_url);
+    const arrayBuffer = await imageResponse.arrayBuffer();
+    twitchProfileImage = new Uint8Array(arrayBuffer as ArrayBuffer) as unknown as Uint8Array<ArrayBuffer>;
       
       // Note: Worker sync will automatically update Twitch jobs within 2 minutes
     }
@@ -190,7 +191,7 @@ export async function PATCH(
         ...(newSummonerName && { summonerName: newSummonerName }),
         ...(data.twitchLogin !== undefined && { twitchLogin: data.twitchLogin }),
         ...(twitchUserId && { twitchUserId }),
-        ...(twitchProfileImage && { twitchProfileImage }),
+        ...(twitchProfileImage && { twitchProfileImage: { set: twitchProfileImage } }),
         // Role changes reserved for admins
         ...(session.user.isAdmin && data.role !== undefined && { role: data.role }),
         ...(data.startDate !== undefined && {
