@@ -1,6 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { config } from 'dotenv';
+
+// Load environment variables if not already loaded
+if (!process.env.DATABASE_URL) {
+  config();
+}
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;

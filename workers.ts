@@ -7,6 +7,10 @@
  * - Match data fetching (post-game stats)
  */
 
+// Load environment variables from .env file
+import { config } from 'dotenv';
+config();
+
 import { initializeWorkers, shutdownWorkers } from './src/lib/workers';
 
 // Utility function to add timestamps to logs
