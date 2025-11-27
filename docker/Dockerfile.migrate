@@ -28,7 +28,7 @@ RUN echo '#!/bin/sh' > migrate.sh && \
     echo '  sleep 2' >> migrate.sh && \
     echo 'done' >> migrate.sh && \
     echo 'echo "Database is ready! Applying schema..."' >> migrate.sh && \
-    echo 'npx prisma db push --accept-data-loss' >> migrate.sh && \
+    echo 'npx prisma db push --accept-data-loss --config ./prisma/prisma.config.ts' >> migrate.sh && \
     echo 'echo "Migration completed successfully!"' >> migrate.sh && \
     echo 'echo "Checking for admin user setup..."' >> migrate.sh && \
     echo 'tsx scripts/create-default-admin.ts || echo "Admin check completed"' >> migrate.sh && \
