@@ -3,7 +3,7 @@ updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
       time: "11:00"
       timezone: "America/Toronto"
     commit-message:
@@ -12,24 +12,20 @@ updates:
       ui-dependencies:
         patterns:
           - "*"
-    reviewers:
-      - "ninepiece2"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
       time: "11:00"
       timezone: "America/Toronto"
     commit-message:
       prefix: "deps(actions)"
-    reviewers:
-      - "ninepiece2"
     
   - package-ecosystem: "docker"
     directory: "/docker"
     schedule:
-      interval: "daily"
+      interval: "weekly"
       time: "11:00"
       timezone: "America/Toronto"
     commit-message:
@@ -38,5 +34,3 @@ updates:
       docker-images:
         patterns:
           - "*"
-    reviewers:
-      - "ninepiece2"
