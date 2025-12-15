@@ -16,9 +16,6 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Run sync-overrides script
         run: node .github/scripts/sync-overrides.js
 
@@ -31,3 +28,6 @@ jobs:
             git commit -m "chore: sync overrides for react, react-dom, @auth/core"
             git push
           fi
+          
+      - name: Install dependencies
+        run: npm ci
