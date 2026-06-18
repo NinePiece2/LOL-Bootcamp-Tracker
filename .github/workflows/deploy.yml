@@ -27,7 +27,7 @@ jobs:
         shell: bash
 
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Wait for all builds to complete
         uses: actions/github-script@v9
